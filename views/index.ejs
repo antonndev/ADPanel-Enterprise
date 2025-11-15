@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="ro">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="dashboard.css">
+    <title>ADPanel</title>
+    <link id="favicon" rel="icon" type="image/png" href="/images/adpanel-dark.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.cdnfonts.com/css/gg-sans-2" rel="stylesheet">
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://site-assets.fontawesome.com/releases/v6.7.2/css/all.css" />
+
+    <!-- Minimal styles for the Create + Fork + Port + Node select -->
+    <style>
+      .btn-primary {
+        display: inline-flex; gap: 8px; align-items: center;
+        background: #10b981; color: #041015; border: 0; border-radius: 10px;
+        padding: 10px 14px; font-weight: 700; cursor: pointer;
+        box-shadow: 0 6px 18px rgba(16,185,129,.25);
+      }
+      .btn-primary:hover { filter: brightness(1.06); }
+      .btn-ghost {
+        background: transparent; border: 1px solid rgba(255,255,255,.08);
+        color: #c8d3df; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+      }
+
+      .modal-overlay {
+        position: fixed; inset: 0; background: rgba(2,6,12,.55);
+        display: none; align-items: center; justify-content: center; z-index: 9999;
+        backdrop-filter: blur(3px);
+      }
+      .modal-overlay.show { display: flex; }
+      .modal-card {
+        width: min(680px, 92vw);
+        background: #0e1218;
+        border: 1px solid rgba(255,255,255,.06);
+        border-radius: 14px;
+        box-shadow: 0 30px 90px rgba(0,0,0,.55);
+        color: #e7eef7;
+      }
+      .modal-head {
+        display:flex; align-items:center; justify-content:space-between;
+        padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.06);
+      }
+      .modal-title { font-size: 18px; font-weight: 800; }
+      .modal-body { padding: 16px 18px; display: grid; gap: 12px; }
+      .modal-foot { display:flex; justify-content:flex-end; gap:10px; padding: 14px 18px; border-top:1px solid rgba(255,255,255,.06); }
+
+      .field { display: grid; gap: 6px; }
+      .field label { font-size: 13px; color: #a9b4c2; }
+      .field input, .field select, .field textarea {
+        background: #0a0f14; border: 1px solid rgba(255,255,255,.06);
+        border-radius: 10px; color: #eaf1fb; padding: 10px 12px; outline: none;
+      }
+      .template-grid, .node-grid {
+        display: grid; gap: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      }
+      .template-card, .node-card {
+        border: 1px solid rgba(255,255,255,.06);
+        border-radius: 12px; padding: 12px; cursor: pointer;
+        background: #0b1117; text-align: left;
+      }
+      .template-card[aria-selected="true"],
+      .node-card[aria-selected="true"] {
+        outline: 2px solid #10b981; outline-offset: 0;
+        background: linear-gradient(180deg, rgba(16,185,129,.08), transparent);
+      }
+      .template-card h4, .node-card h4 { margin: 0 0 4px 0; font-size: 14px; }
+      .template-card p, .node-card p { margin: 0; font-size: 12px; color:#a9b4c2; min-height: 32px; }
+      .inline-hint { font-size: 12px; color: #9eb0c5; }
+
+      .node-status { display:inline-flex; align-items:center; gap:8px; font-size:12px; color:#9eb0c5; }
+      .dot { width:8px; height:8px; border-radius:999px; background:#a0aec0; display:inline-block; }
+      .dot.ok { background:#10b981; box-shadow:0 0 0 2px rgba(16,185,129,.15); }
+      .dot.down { background:#ef4444; box-shadow:0 0 0 2px rgba(239,68,68,.15); }
+
+      .spinner {
+        width: 16px; height: 16px; border-radius: 999px; border: 2px solid rgba(255,255,255,.28);
+        border-top-color: #fff; animation: spin .9s linear infinite; display:none;
+      }
+      .spinner.show { display:inline-block; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Fork modal */
+      .fork-grid {
+        display: grid; gap: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      }
+      .fork-card {
+        border: 1px solid rgba(255,255,255,.06);
+        border-radius: 12px; padding: 12px; cursor: pointer;
+        background: #0b1117; display:flex; gap:10px; align-items:center;
+      }
+      .fork-card[aria-selected="true"] {
+        outline: 2px solid #10b981; background: linear-gradient(180deg, rgba(16,185,129,.08), transparent);
+      }
+      .fork-card .fork-title { font-weight: 700; }
+      .muted { color:#a9b4c2; font-size:12px; }
+    </style>
+  </head>
+  <body>
+    <div id="splash-screen"></div>
+
+    <svg xmlns="http://www.w3.org/2000/svg" style="position: absolute; width:0; height:0; pointer-events:none;">
+      <defs>
+        <filter id="glass-distortion" x="0%" y="0%" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.008 0.008" numOctaves="2" seed="92" result="noise" />
+          <feGaussianBlur in="noise" stdDeviation="2" result="blurred" />
+          <feDisplacementMap in="SourceGraphic" in2="blurred" scale="77" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </defs>
+    </svg>
+
+    <header class="top-bar" id="topBar">
+      <div class="brand">
+        <img src="/images/adpanel-dark.png" alt="ADPanel logo" class="brand-logo" />
+        <div class="brand-copy">
+          <h1 class="brand-title">ADPanel</h1>
+          <p class="brand-subtitle">Smart control for your Discord bots</p>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-actions" style="gap:10px; display:flex; align-items:center;">
+          <button id="createBtn" class="btn-primary" title="Create">
+            <i class="fa-solid fa-plus"></i>
+            <span>Create</span>
+          </button>
+
+          <% if (isAdmin) { %>
+          <button class="icon-button" title="Settings" onclick="location.href='/settings'">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <% } else { %>
+          <button class="icon-button" title="You are not admin" disabled>
+            <i class="fa-solid fa-lock"></i>
+          </button>
+          <% } %>
+          <button id="logoutBtn" class="icon-butt" title="Log Out">
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div id="topbar-spacer" aria-hidden="true"></div>
+
+    <main class="dashboard" id="mainContent">
+      <section class="hero">
+        <div class="hero-copy">
+          <h2>Welcome back!</h2>
+          <p>
+            Monitor, deploy, and orchestrate Discord bots with ease. Launch new experiences for your community in
+            seconds.
+          </p>
+
+          <div class="hero-actions">
+            <button class="pills" data-scroll-target="bots">View Bots</button>
+            <button class="pill pill--outline" id="createBtnHero">
+              <i class="fa-solid fa-plus" style="margin-right:6px;"></i>Create
+            </button>
+          </div>
+        </div>
+
+        <div class="hero-stats">
+          <article class="stat-card">
+            <div class="stat-card__icon stat-card__icon--active">
+              <i class="fa-solid fa-server"></i>
+            </div>
+            <div class="stat-card__content">
+              <p class="stat-card__label">Active bots</p>
+              <p class="stat-card__value"><%= bots.length %></p>
+            </div>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-card__icon stat-card__icon--uptime">
+              <i class="fa-solid fa-signal-bars"></i>
+            </div>
+            <div class="stat-card__content">
+              <p class="stat-card__label">Status</p>
+              <p class="stat-card__value">Operational</p>
+            </div>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-card__icon stat-card__icon--deploy">
+              <i class="fa-solid fa-clock-three"></i>
+            </div>
+            <div class="stat-card__content">
+              <p class="stat-card__label">Server Uptime</p>
+              <p class="stat-card__value" id="uptimeDisplay">0s</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="quick-actions" aria-label="Quick actions">
+        <h3>Quick actions</h3>
+        <div class="quick-actions__grid">
+          <button class="quick-action" onclick="window.location.href='/settings?panel=account'">
+            <i class="fa-solid fa-list-check"></i>
+            <p style="font-family: 'gg sans', sans-serif; font-size: 15px; line-height: 1.4;">Manage Account</p>
+          </button>
+          <button class="quick-action" onclick="window.location.href='/settings?panel=servers'">
+            <i class="fa-solid fa-bars-progress"></i>
+            <p style="font-family: 'gg sans', sans-serif; font-size: 15px; line-height: 1.4;">Manage servers</p>
+          </button>
+          <button class="quick-action" onclick="window.open('https://discord.com/developers/applications', '_blank')">
+            <i class="fa-brands fa-discord"></i>
+            <p style="font-family: 'gg sans', sans-serif; font-size: 15px; line-height: 1.4;">Discord Portal</p>
+          </button>
+        </div>
+      </section>
+
+      <section class="bots" id="bots">
+        <div class="section-heading">
+          <div>
+            <h3>Your bots</h3>
+            <p>Browse and jump straight into any bot workspace.</p>
+          </div>
+          <div class="section-actions">
+            <label for="searchBots" class="search-field">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input id="searchBots" class="search-servers" type="text" placeholder="Search servers" />
+            </label>
+          </div>
+        </div>
+
+        <div class="bot-grid" data-bot-grid>
+          <% bots.forEach(function(bot){ %>
+          <article class="bot-card" data-bot-card data-name="<%= bot.toLowerCase() %>" onclick="location.href='/bot/<%= bot %>'">
+            <div class="bot-card__icon">
+              <i class="fa-solid fa-server"></i>
+            </div>
+            <div class="bot-card__body">
+              <h4><%= bot %></h4>
+              <p>Manage configuration, logs and deployments.</p>
+            </div>
+            <i class="fa-solid fa-arrow-right bot-card__chevron"></i>
+          </article>
+          <% }) %>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer" id="upload">
+      <div class="footer-inner" style="align-items:center; gap:16px;">
+        <div class="footer-copy">
+          <h3>Spin up a new server</h3>
+          <p>Pick a template and a name, we’ll do the rest.</p>
+        </div>
+        <button class="btn-primary" id="createBtnFooter">
+          <i class="fa-solid fa-plus"></i>
+          <span>Create</span>
+        </button>
+      </div>
+    </footer>
+
+    <template id="empty-state">
+      <div class="empty-state">
+        <i class="fa-solid fa-sparkles empty-state__icon"></i>
+        <h4>No bots found</h4>
+        <p>Try adjusting your search or create a new server.</p>
+      </div>
+    </template>
+
+    <!-- Create Modal -->
+    <div id="createModal" class="modal-overlay" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="createTitle">
+        <div class="modal-head">
+          <div class="modal-title" id="createTitle">
+            <i class="fa-solid fa-plus" style="margin-right:8px;color:#10b981"></i>
+            Create server
+          </div>
+          <button id="createClose" class="btn-ghost" title="Close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="field">
+            <label for="serverName">Server name</label>
+            <input id="serverName" type="text" placeholder="ex: my-discord-bot" />
+            <div class="inline-hint">Doar litere, cifre, minus și underscore. Max ~40 caractere.</div>
+          </div>
+
+          <div class="field">
+            <label>Template <span class="inline-hint">(obligatoriu — nimic nu este preselectat)</span></label>
+            <div id="templateGrid" class="template-grid" role="listbox" aria-label="Templates"></div>
+            <div class="inline-hint" id="templateInfo">Nimic selectat</div>
+          </div>
+
+          <!-- NEW: Node select -->
+          <div class="field">
+            <label>Alege nodul <span class="inline-hint">(Local node sau unul din lista)</span></label>
+            <div id="nodeGrid" class="node-grid" role="listbox" aria-label="Nodes"></div>
+            <div class="inline-hint" id="nodeInfo">Selectat: Local node</div>
+          </div>
+
+          <div id="templateInfo2" class="inline-hint"></div>
+        </div>
+
+        <div class="modal-foot">
+          <span class="spinner" id="createSpinner"></span>
+          <button id="createCancel" class="btn-ghost">Cancel</button>
+          <button id="createConfirm" class="btn-primary">
+            <i class="fa-solid fa-plus"></i><span>Create</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Minecraft Fork Modal -->
+    <div id="forkModal" class="modal-overlay" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="forkTitle">
+        <div class="modal-head">
+          <div class="modal-title" id="forkTitle">
+            <i class="fa-solid fa-cube" style="margin-right:8px;color:#10b981"></i>
+            Choose Minecraft fork
+          </div>
+          <button id="forkClose" class="btn-ghost" title="Close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="inline-hint">Versiune fixă: <strong>1.21.8</strong>. Se va descărca automat fișierul <code>.jar</code> după creare.</div>
+
+          <div id="forkGrid" class="fork-grid" role="listbox" aria-label="Minecraft forks"></div>
+
+          <div id="forkInfo" class="inline-hint"></div>
+        </div>
+
+        <div class="modal-foot">
+          <span class="spinner" id="forkSpinner"></span>
+          <button id="forkBack" class="btn-ghost">Înapoi</button>
+          <button id="forkConfirm" class="btn-primary">
+            <i class="fa-solid fa-check"></i><span>Continue</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Port Selection Modal -->
+    <div id="portModal" class="modal-overlay" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="portTitle">
+        <div class="modal-head">
+          <div class="modal-title" id="portTitle">
+            <i class="fa-solid fa-ethernet" style="margin-right:8px;color:#10b981"></i>
+            Choose public port
+          </div>
+          <button id="portClose" class="btn-ghost" title="Close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="field">
+            <label>Server IP (public)</label>
+            <div class="inline-hint">Conectare: <code id="serverIp">detecting…</code></div>
+          </div>
+          <div class="field">
+            <label for="serverPort">Port public (1 – 35650)</label>
+            <input id="serverPort" type="number" min="1" max="35650" step="1" placeholder="25565" />
+            <div class="inline-hint">Implicit 25565. Poți scrie manual alt port (de ex. 30000).</div>
+          </div>
+        </div>
+
+        <div class="modal-foot">
+          <span class="spinner" id="portSpinner"></span>
+          <button id="portBack" class="btn-ghost">Înapoi</button>
+          <button id="portConfirm" class="btn-primary">
+            <i class="fa-solid fa-check"></i><span>Create</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const darkFavicon = '/images/adpanel-white.png';
+      const lightFavicon = '/images/adpanel-dark.png';
+
+      function updateIcons() {
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(el => el.remove());
+        const linkFavicon = document.createElement('link');
+        linkFavicon.rel = 'icon';
+        linkFavicon.type = 'image/png';
+        linkFavicon.href = isDark ? darkFavicon : lightFavicon;
+        document.head.appendChild(linkFavicon);
+      }
+      updateIcons();
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateIcons);
+
+      window.addEventListener('DOMContentLoaded', () => {
+        // ---- Splash & layout behaviors (nemodificate) ----
+        const splash = document.getElementById('splash-screen');
+        if (!localStorage.getItem('seenSplash')) {
+          const displayTime = 5000;
+          setTimeout(() => {
+            splash.classList.add('hidden');
+            setTimeout(() => splash.remove(), 600);
+          }, displayTime);
+          localStorage.setItem('seenSplash', 'true');
+        } else {
+          splash.remove();
+        }
+
+        document.querySelectorAll('[data-scroll-target]').forEach(button => {
+          button.addEventListener('click', () => {
+            const targetId = button.getAttribute('data-scroll-target');
+            const section = document.getElementById(targetId);
+            if (section) section.scrollIntoView({ behavior: 'smooth' });
+          });
+        });
+
+        const searchInput = document.getElementById('searchBots');
+        const botGrid = document.querySelector('[data-bot-grid]');
+        const emptyStateTemplate = document.getElementById('empty-state');
+
+        function updateBotVisibility() {
+          const term = (searchInput?.value || '').trim().toLowerCase();
+          const botCards = Array.from(botGrid.querySelectorAll('[data-bot-card]'));
+          let visible = 0;
+          botCards.forEach(card => {
+            const name = card.getAttribute('data-name');
+            const match = !term || name.includes(term);
+            card.classList.toggle('is-hidden', !match);
+            if (match) visible++;
+          });
+          const existing = botGrid.querySelector('.empty-state');
+          if (visible === 0) {
+            if (!existing) {
+              const clone = emptyStateTemplate.content.cloneNode(true);
+              botGrid.appendChild(clone);
+            }
+          } else if (existing) existing.remove();
+        }
+        searchInput?.addEventListener('input', updateBotVisibility);
+        updateBotVisibility();
+
+        const topBar = document.getElementById('topBar');
+        const spacer = document.getElementById('topbar-spacer');
+        function measureExpandedHeight() {
+          const hadCompact = topBar.classList.contains('top-bar--compact');
+          topBar.classList.remove('top-bar--compact');
+          const h = Math.ceil(topBar.getBoundingClientRect().height);
+          if (hadCompact) topBar.classList.add('top-bar--compact');
+          return h;
+        }
+        let expandedHeight = measureExpandedHeight();
+        spacer.style.height = expandedHeight + 'px';
+        let resizeRAF = null;
+        window.addEventListener('resize', () => {
+          if (resizeRAF) cancelAnimationFrame(resizeRAF);
+          resizeRAF = requestAnimationFrame(() => {
+            expandedHeight = measureExpandedHeight();
+            spacer.style.height = expandedHeight + 'px';
+          });
+        });
+        new ResizeObserver(() => {
+          expandedHeight = measureExpandedHeight();
+          spacer.style.height = expandedHeight + 'px';
+        }).observe(topBar);
+
+        let lastY = window.scrollY || 0, ticking = false, pinnedTimeout = null;
+        function onScrollTick() {
+          const y = window.scrollY || 0, d = y - lastY;
+          if (y > 36) topBar.classList.add('top-bar--compact'); else topBar.classList.remove('top-bar--compact');
+          if (y <= 24) {
+            topBar.classList.remove('top-bar--hidden','top-bar--pinned');
+            lastY = y; ticking = false; return;
+          }
+          if (Math.abs(d) > 4) {
+            if (d > 0 && y > 120) {
+              topBar.classList.add('top-bar--hidden'); topBar.classList.remove('top-bar--pinned');
+            } else if (d < 0) {
+              topBar.classList.remove('top-bar--hidden'); topBar.classList.add('top-bar--pinned');
+              if (pinnedTimeout) clearTimeout(pinnedTimeout);
+              pinnedTimeout = setTimeout(() => topBar.classList.remove('top-bar--pinned'), 900);
+            }
+          }
+          lastY = y; ticking = false;
+        }
+        window.addEventListener('scroll', () => { if (!ticking) { requestAnimationFrame(onScrollTick); ticking = true; }}, { passive: true });
+        if ((window.scrollY || 0) > 36) topBar.classList.add('top-bar--compact'); else topBar.classList.remove('top-bar--compact');
+        topBar.classList.remove('top-bar--hidden');
+
+        function deleteAllClientCookies() {
+          const cookies = document.cookie ? document.cookie.split('; ') : [];
+          for (const cookie of cookies) {
+            const eqPos = cookie.indexOf('=');
+            const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${location.hostname}`;
+            const parts = location.hostname.split('.');
+            for (let i = 0; i < parts.length - 1; i++) {
+              const dom = '.' + parts.slice(i).join('.');
+              document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${dom}`;
+            }
+          }
+        }
+        document.getElementById('logoutBtn')?.addEventListener('click', async (e) => {
+          e.preventDefault();
+          try { deleteAllClientCookies(); await fetch('/logout', { method:'POST', credentials:'include' }); location.href='/login'; }
+          catch { alert('Failed to log out'); }
+        });
+
+        // ----- Create flow -----
+        const createBtns = [document.getElementById('createBtn'), document.getElementById('createBtnHero'), document.getElementById('createBtnFooter')].filter(Boolean);
+        const createModal = document.getElementById('createModal');
+        const createClose = document.getElementById('createClose');
+        const createCancel = document.getElementById('createCancel');
+        const createConfirm = document.getElementById('createConfirm');
+        const createSpinner = document.getElementById('createSpinner');
+        const serverNameEl = document.getElementById('serverName');
+        const templateGrid = document.getElementById('templateGrid');
+        const templateInfo = document.getElementById('templateInfo');
+
+        const forkModal = document.getElementById('forkModal');
+        const forkClose = document.getElementById('forkClose');
+        const forkBack = document.getElementById('forkBack');
+        const forkConfirm = document.getElementById('forkConfirm');
+        const forkSpinner = document.getElementById('forkSpinner');
+        const forkGrid = document.getElementById('forkGrid');
+        const forkInfo = document.getElementById('forkInfo');
+
+        // Port modal
+        const portModal = document.getElementById('portModal');
+        const portClose = document.getElementById('portClose');
+        const portBack = document.getElementById('portBack');
+        const portConfirm = document.getElementById('portConfirm');
+        const portSpinner = document.getElementById('portSpinner');
+        const serverIpEl = document.getElementById('serverIp');
+        const serverPortEl = document.getElementById('serverPort');
+
+        // NEW: Node select
+        const nodeGrid = document.getElementById('nodeGrid');
+        const nodeInfo = document.getElementById('nodeInfo');
+
+        let templates = [];
+        let selectedTemplateId = null; // nimic preselectat
+        const MC_VERSION = "1.21.8";
+        const MC_FORKS = [
+          { id: "paper",      name: "Paper",      desc: "Performanță, compatibilitate ridicată" },
+          { id: "pufferfish", name: "Pufferfish", desc: "Optimizări suplimentare pentru TPS" },
+          { id: "vanilla",    name: "Vanilla",    desc: "Experiență standard, fără patch-uri" },
+          { id: "purpur",     name: "Purpur",     desc: "Fork Paper cu setări extra" }
+        ];
+        let selectedForkId = null;
+
+        // Node state
+        let nodes = [];
+        let selectedNodeId = "local"; // implicit
+
+        function openCreate() {
+          createModal.classList.add('show');
+          createModal.setAttribute('aria-hidden', 'false');
+          serverNameEl.value = '';
+          templateGrid.innerHTML = '<div class="inline-hint">Se încarcă template-urile…</div>';
+          templateInfo.textContent = 'Nimic selectat';
+          selectedTemplateId = null;
+
+          // reset node ui
+          nodeGrid.innerHTML = '<div class="inline-hint">Se încarcă nodurile…</div>';
+          selectedNodeId = "local";
+          nodeInfo.textContent = "Selectat: Local node";
+
+          fetchTemplates();
+          fetchNodes();
+        }
+        function closeCreate() {
+          createModal.classList.remove('show');
+          createModal.setAttribute('aria-hidden', 'true');
+        }
+        createBtns.forEach(btn => btn.addEventListener('click', openCreate));
+        createClose.addEventListener('click', closeCreate);
+        createCancel.addEventListener('click', closeCreate);
+        createModal.addEventListener('click', (e) => { if (e.target === createModal) closeCreate(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && createModal.classList.contains('show')) closeCreate(); });
+
+        async function fetchTemplates() {
+          try {
+            const r = await fetch('/api/templates');
+            if (!r.ok) throw new Error('Failed to load templates');
+            const data = await r.json();
+            templates = (data && data.templates) || [];
+          } catch (e) {
+            templates = [
+              { id: 'minecraft', name: 'Minecraft', description: 'Server Minecraft (fork la pasul următor)' },
+              { id: 'discord-bot', name: 'Discord Bot', description: 'Node 20 runtime (mount /app)' },
+              { id: 'vanilla', name: 'Empty', description: 'Alpine base (sleep)' },
+            ];
+          }
+          renderTemplates();
+        }
+
+        async function fetchNodes() {
+          try {
+            const r = await fetch('/api/nodes');
+            const data = await r.json();
+            nodes = (data && data.nodes) ? data.nodes : [];
+          } catch (e) {
+            nodes = [];
+          }
+          renderNodes();
+        }
+
+        function renderTemplates() {
+          templateGrid.innerHTML = '';
+          templates.forEach(t => {
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = 'template-card';
+            card.setAttribute('role','option');
+            card.setAttribute('aria-selected', 'false');
+            card.innerHTML = `
+              <h4>${t.name}</h4>
+              <p>${t.description || ''}</p>
+              <div class="inline-hint">ID: ${t.id}</div>
+            `;
+            card.addEventListener('click', () => {
+              selectedTemplateId = t.id;
+              [...templateGrid.children].forEach(c => c.setAttribute('aria-selected','false'));
+              card.setAttribute('aria-selected','true');
+              templateInfo.textContent = `Selectat: ${t.name}`;
+            });
+            templateGrid.appendChild(card);
+          });
+        }
+
+        function renderNodes() {
+          nodeGrid.innerHTML = '';
+
+          // 1) Local node (mereu disponibil)
+          const local = document.createElement('button');
+          local.type = 'button';
+          local.className = 'node-card';
+          local.setAttribute('role','option');
+          local.setAttribute('aria-selected', 'true');
+          local.innerHTML = `
+            <h4>Local node</h4>
+            <p>Rulează pe același host cu panoul</p>
+            <div class="node-status"><span class="dot ok"></span> assumed online</div>
+          `;
+          local.addEventListener('click', () => {
+            selectedNodeId = 'local';
+            [...nodeGrid.children].forEach(c => c.setAttribute('aria-selected','false'));
+            local.setAttribute('aria-selected','true');
+            nodeInfo.textContent = 'Selectat: Local node';
+          });
+          nodeGrid.appendChild(local);
+
+          // 2) Nodes din API
+          nodes.forEach(n => {
+            const online = !!n.online;
+            const el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'node-card';
+            el.setAttribute('role','option');
+            el.setAttribute('aria-selected', 'false');
+            el.innerHTML = `
+              <h4>${n.name || n.uuid}</h4>
+              <p>${n.address || ''}</p>
+              <div class="node-status"><span class="dot ${online ? 'ok' : 'down'}"></span> ${online ? 'online' : 'offline'}</div>
+              <div class="inline-hint">ID: ${n.uuid}</div>
+            `;
+            el.addEventListener('click', () => {
+              selectedNodeId = n.uuid || n.id || n.name;
+              [...nodeGrid.children].forEach(c => c.setAttribute('aria-selected','false'));
+              el.setAttribute('aria-selected','true');
+              nodeInfo.textContent = `Selectat: ${n.name || n.uuid} (${online ? 'online' : 'offline'})`;
+            });
+            nodeGrid.appendChild(el);
+          });
+        }
+
+        function sanitizeName(s) {
+          s = (s || '').trim().toLowerCase();
+          s = s.replace(/\s+/g, '-').replace(/[^a-z0-9\-_]/g, '');
+          return s.slice(0, 40) || '';
+        }
+
+        // Fork modal helpers
+        function openForkModal() {
+          forkGrid.innerHTML = '';
+          selectedForkId = null;
+          MC_FORKS.forEach(f => {
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = 'fork-card';
+            card.setAttribute('role','option');
+            card.setAttribute('aria-selected','false');
+            card.innerHTML = `
+              <div class="fork-title">${f.name}</div>
+              <div class="muted">— ${f.desc}</div>
+            `;
+            card.addEventListener('click', () => {
+              selectedForkId = f.id;
+              [...forkGrid.children].forEach(c => c.setAttribute('aria-selected','false'));
+              card.setAttribute('aria-selected','true');
+              forkInfo.textContent = `Fork selectat: ${f.name} (${MC_VERSION})`;
+            });
+            forkGrid.appendChild(card);
+          });
+
+          forkInfo.textContent = 'Alege un fork (obligatoriu).';
+          forkModal.classList.add('show');
+          forkModal.setAttribute('aria-hidden', 'false');
+        }
+        function closeForkModal() {
+          forkModal.classList.remove('show');
+          forkModal.setAttribute('aria-hidden', 'true');
+        }
+        forkClose.addEventListener('click', closeForkModal);
+        forkBack.addEventListener('click', () => {
+          closeForkModal();
+          createModal.classList.add('show');
+          createModal.setAttribute('aria-hidden', 'false');
+        });
+        forkModal.addEventListener('click', (e) => { if (e.target === forkModal) closeForkModal(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && forkModal.classList.contains('show')) closeForkModal(); });
+
+        // ----- Port modal helpers -----
+        function openPortModal() {
+          serverIpEl.textContent = 'detecting…';
+          serverPortEl.value = '25565';
+
+          const ipv4Re = /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/;
+          function extractIP(s) {
+            if (!s) return null;
+            const str = String(s).trim();
+            const m = str.match(ipv4Re);
+            if (m) return m[0];
+            if (str.includes(':')) return str.replace(/^\[|\]$/g,'');
+            return null;
+          }
+          function pickIpFromJSON(j) {
+            return extractIP(j?.publicIp) || extractIP(j?.ip) || extractIP(j?.address) || extractIP(j?.host) || extractIP(j?.hostname);
+          }
+          function setIp(ip) {
+            serverIpEl.textContent = ip || 'unknown';
+          }
+
+          // 1) Dacă se creează pe local, folosim IP-ul panoului; altfel afișăm IP-ul nodului selectat
+          if (selectedNodeId && selectedNodeId !== 'local') {
+            const node = (nodes || []).find(x => (x.uuid === selectedNodeId) || (x.id === selectedNodeId) || (x.name === selectedNodeId));
+            const ip = node?.address || null;
+            setIp(ip);
+          } else {
+            fetch('/api/server-info')
+              .then(r => r.ok ? r.json() : Promise.reject())
+              .then(j => setIp(pickIpFromJSON(j)))
+              .catch(() => setIp(null));
+          }
+
+          portModal.classList.add('show');
+          portModal.setAttribute('aria-hidden', 'false');
+        }
+        function closePortModal() {
+          portModal.classList.remove('show');
+          portModal.setAttribute('aria-hidden', 'true');
+        }
+        portClose.addEventListener('click', closePortModal);
+        portBack.addEventListener('click', () => {
+          closePortModal();
+          forkModal.classList.add('show');
+          forkModal.setAttribute('aria-hidden', 'false');
+        });
+        portModal.addEventListener('click', (e) => { if (e.target === portModal) closePortModal(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && portModal.classList.contains('show')) closePortModal(); });
+
+        // Create confirm (step 1)
+        createConfirm.addEventListener('click', async () => {
+          const raw = serverNameEl.value;
+          const name = sanitizeName(raw);
+          if (!name) return alert('Introdu un nume valid (litere/cifre/-/_)');
+          if (!selectedTemplateId) return alert('Alege un template');
+
+          // dacă s-a selectat un nod offline, opresc
+          if (selectedNodeId !== 'local') {
+            const node = (nodes || []).find(x => (x.uuid === selectedNodeId) || (x.id === selectedNodeId) || (x.name === selectedNodeId));
+            if (!node) return alert('Nodul selectat nu mai există.');
+            if (!node.online) return alert('Nodul selectat este offline.');
+          }
+
+          // Dacă e Minecraft -> deschidem fork modal (nu trimitem încă)
+          if (selectedTemplateId === 'minecraft') {
+            createModal.classList.remove('show');
+            createModal.setAttribute('aria-hidden', 'true');
+            openForkModal();
+            return;
+          }
+
+          // Altfel creăm direct
+          try {
+            createSpinner.classList.add('show');
+            createConfirm.disabled = true;
+            const r = await fetch('/api/servers/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, templateId: selectedTemplateId, nodeId: selectedNodeId })
+            });
+            const j = await r.json().catch(()=> ({}));
+            if (!r.ok || !j.ok) throw new Error((j && j.error) ? j.error : 'Create failed');
+            window.location.href = `/bot/${encodeURIComponent(name)}`;
+          } catch (e) {
+            alert(e.message || 'Create failed');
+          } finally {
+            createSpinner.classList.remove('show');
+            createConfirm.disabled = false;
+          }
+        });
+
+        // Fork confirm -> open Port modal (step 2)
+        forkConfirm.addEventListener('click', () => {
+          if (!selectedForkId) return alert('Selectează un fork');
+          closeForkModal();
+          openPortModal();
+        });
+
+        // Port confirm -> finalize create for Minecraft (step 3)
+        portConfirm.addEventListener('click', async () => {
+          const raw = serverNameEl.value;
+          const name = sanitizeName(raw);
+          if (!name) return alert('Numele serverului lipsă/invalid');
+          if (!selectedForkId) return alert('Selectează un fork');
+
+          if (selectedNodeId !== 'local') {
+            const node = (nodes || []).find(x => (x.uuid === selectedNodeId) || (x.id === selectedNodeId) || (x.name === selectedNodeId));
+            if (!node) return alert('Nodul selectat nu mai există.');
+            if (!node.online) return alert('Nodul selectat este offline.');
+          }
+
+          // validate port
+          const portVal = parseInt(serverPortEl.value, 10);
+          if (!Number.isInteger(portVal) || portVal < 1 || portVal > 35650) {
+            return alert('Port invalid. Alege între 1 și 35650.');
+          }
+
+          try {
+            portSpinner.classList.add('show');
+            portConfirm.disabled = true;
+
+            const r = await fetch('/api/servers/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name,
+                templateId: 'minecraft',
+                mcFork: selectedForkId,
+                mcVersion: MC_VERSION,
+                hostPort: portVal,
+                nodeId: selectedNodeId
+              })
+            });
+            const j = await r.json().catch(()=> ({}));
+            if (!r.ok || !j.ok) throw new Error((j && j.error) ? j.error : 'Create failed');
+
+            window.location.href = `/bot/${encodeURIComponent(name)}`;
+          } catch (e) {
+            alert(e.message || 'Create failed');
+          } finally {
+            portSpinner.classList.remove('show');
+            portConfirm.disabled = false;
+          }
+        });
+      });
+
+      const serverStartTime = <%= serverStartTime %>;
+      const uptimeDisplay = document.getElementById('uptimeDisplay');
+      function formatTime(ms) {
+        const totalSeconds = Math.floor(ms / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        return `${hours}h ${minutes}m ${seconds}s`;
+      }
+      function updateUptime() {
+        const now = Date.now();
+        uptimeDisplay.textContent = formatTime(now - serverStartTime);
+      }
+      setInterval(updateUptime, 1000);
+      updateUptime();
+    </script>
+  </body>
+</html>

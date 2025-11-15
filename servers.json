@@ -1,0 +1,10 @@
+[
+  {
+    "name": "wgweg",
+    "template": "minecraft",
+    "start": "server.jar",
+    "ip": "185.99.132.79",
+    "nodeId": "ec41c6f6-763c-4f6e-816e-0ac21c50f52d",
+    "port": 25570
+  }
+]

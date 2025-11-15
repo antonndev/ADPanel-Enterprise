@@ -1,0 +1,24 @@
+[
+  {
+    "id": "ec41c6f6-763c-4f6e-816e-0ac21c50f52d",
+    "uuid": "ec41c6f6-763c-4f6e-816e-0ac21c50f52d",
+    "name": "Node",
+    "address": "185.99.132.79",
+    "ram_mb": 12288,
+    "disk_gb": 10,
+    "ports": {
+      "mode": "range",
+      "start": 25565,
+      "count": 10
+    },
+    "token_id": "tok_c6dbf3749c62",
+    "token": "vIPHd9pG39xMx4x7zvxKUGq0BhBC3Le8",
+    "createdAt": 1763064086834,
+    "api_port": 8080,
+    "port_ok": true,
+    "last_seen": 1763153711947,
+    "last_check": 1763153829874,
+    "online": null,
+    "buildConfig": {}
+  }
+]

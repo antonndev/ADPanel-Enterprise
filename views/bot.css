@@ -1,0 +1,69 @@
+      .entry-actions { position: relative; }
+      .more-btn {
+        background: transparent; border: none; color: #bfc8d4; cursor: pointer;
+        font-size: 18px; padding: 6px; border-radius: 6px;
+      }
+      .more-btn:hover { background: rgba(255,255,255,0.02); color:#fff; }
+      .more-menu {
+        position: absolute; right: 0; top: 28px; background: #0f1114;
+        border: 1px solid rgba(255,255,255,0.04); box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+        border-radius: 8px; overflow: hidden; z-index: 2000; min-width: 160px; display: none;
+      }
+      .more-menu.show { display: block; }
+      .more-menu button {
+        display: block; width: 100%; padding: 10px 12px; background: transparent; border: 0;
+        color: #c8d1da; text-align: left; font-size: 14px; cursor: pointer;
+      }
+      .more-menu button:hover { background: rgba(255,255,255,0.02); color:#fff; }
+
+      /* Progress & modals & scrollbars — neschimbate (doar scurtate) */
+      .progress-wheel{width:18px;height:18px;border-radius:50%;background:#31343a;display:inline-block;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.06);box-shadow: inset 0 1px 0 rgba(0,0,0,0.3);margin-left:10px;vertical-align:middle;cursor:pointer;transition:transform .12s ease, box-shadow .12s ease;}
+      .progress-wheel:hover{transform:scale(1.08);box-shadow:0 4px 14px rgba(0,0,0,0.5);}
+      .progress-wheel .fill{position:absolute;left:0;right:0;top:0;background:#ffffff;height:0%;border-radius:50%;transition:height 120ms linear;pointer-events:none;}
+      .progress-wheel.hidden{display:none;}
+      .progress-popup{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,rgba(18,20,24,0.92),rgba(28,30,36,0.88));color:#fff;border-radius:12px;border:1px solid rgba(255,255,255,0.06);padding:16px 18px;z-index:100000;min-width:300px;box-shadow:0 12px 40px rgba(0,0,0,0.6);display:none;backdrop-filter:blur(6px) saturate(120%);}
+      .progress-popup .row{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+      .progress-popup .percent{font-weight:700;font-size:20px;color:#ffffff;}
+      .progress-popup .close-btn{background:transparent;border:none;color:#9aa3ad;font-size:18px;cursor:pointer;padding:6px;border-radius:6px;}
+      .progress-popup .progress-bar{margin-top:12px;width:100%;height:12px;background:rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;position:relative;}
+      .progress-popup .progress-bar .bar{height:100%;width:0%;background:linear-gradient(90deg,rgba(255,255,255,1),rgba(220,220,220,0.85));transition:width 120ms linear;box-shadow:0 2px 8px rgba(0,0,0,0.45) inset;}
+      .progress-popup .meta{margin-top:10px;font-size:12px;color:#9aa3ad;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+
+      #dropOverlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:99990;pointer-events:none;}
+      #dropOverlay.visible{display:flex;pointer-events:auto;}
+      #dropOverlay .inner{background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);padding:26px 32px;border-radius:12px;text-align:center;color:#e6eef8;backdrop-filter:blur(3px);box-shadow:0 8px 30px rgba(0,0,0,0.5);}
+      #dropOverlay .inner h3{margin:0 0 6px 0;font-size:18px;}
+      #dropOverlay .inner p{margin:0;font-size:13px;color:#b8c3cf;}
+
+      *::-webkit-scrollbar{width:10px;height:10px;} *::-webkit-scrollbar-track{background:transparent;margin:6px 0;border-radius:999px;}
+      *::-webkit-scrollbar-thumb{background-color:#212121;border-radius:999px;border:2px solid transparent;background-clip:padding-box;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.02);}
+      *::-webkit-scrollbar-thumb:hover{background-color:#2a2a2a;} *::-webkit-scrollbar-corner{background:transparent;}
+
+      #console,#entries,.modal-body,.modal-left,.modal-right,.code-area,textarea,.modal{scrollbar-width:thin;scrollbar-color:#212121 transparent;}
+      #console{max-height:320px;overflow:auto;padding:12px;border-radius:8px;background:#0b0c0e;}
+      #entries{max-height:420px;overflow:auto;padding-right:8px;}
+      .modal-body{max-height:520px;overflow:auto;}
+      .modal-left,.modal-right{max-height:520px;overflow:auto;}
+      .code-area{max-height:520px;overflow:auto;padding:8px;}
+      textarea{max-height:520px;overflow:auto;}
+      .entry{display:flex;justify-content:space-between;gap:12px;padding:8px 6px;align-items:center;border-radius:6px;}
+      .entry:hover{background:rgba(255,255,255,0.02);}
+
+      .dock-wrap{position:fixed;right:18px;bottom:18px;z-index:99999; width: 200px;}
+      .dock{display:flex;gap:10px;background:rgba(11,12,14,0.6);padding:8px;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.6);align-items:center;}
+      .dock-item{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;cursor:pointer;user-select:none;color:#d1d8de;text-decoration:none;}
+      .dock-item .icon{width:360px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;}
+      .dock-item .label{font-size:11px;color:#c3cad2;margin-top:4px;}
+      .dock-item:hover{transform:translateY(-3px);transition:transform .12s;}
+
+      .info-grid{display:grid;gap:10px;}
+      .info-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:#0e1116;border:1px solid rgba(255,255,255,0.05);border-radius:10px;}
+      .info-key{color:#9aa3ad;font-size:13px;}
+      .info-val{color:#e6eef8;font-weight:700;font-size:14px;word-break:break-all;}
+      .addr-wrap{display:flex;gap:8px;align-items:center;}
+      .addr-input{flex:1;padding:10px 12px;border-radius:10px;background:#0b0f14;color:#e6eef8;border:1px solid rgba(255,255,255,0.06);outline:none;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+      .copy-btn{background:#10b981;color:#041015;border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(16,185,129,.25);}
+      .copy-btn:hover{filter:brightness(1.06);}
+      .modal .hint{font-size:12px;color:#9aa3ad;}
+      .disabled{opacity:.5;pointer-events:none;filter:saturate(.3);}
+      .hidden{display:none !important;}
