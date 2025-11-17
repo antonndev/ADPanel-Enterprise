@@ -6,327 +6,66 @@
       "description": "Fast, highly optimized Spigot fork with great plugin compatibility.",
       "logo": "https://assets.papermc.io/brand/papermc_logo.256.png",
       "versions": [
-        {
-          "id": "paper-1.21.10",
-          "name": "1.21.10",
-          "label": "PaperMC 1.21.10",
-          "mcVersion": "1.21.1",
-          "releaseDate": "2025-11-14",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/d4f897545310f31e623d9680786b25dd20a9989e139db050d1aacf81ecafd05c/paper-1.21.10-113.jar"
-        },
-        {
-          "id": "paper-1.21.9",
-          "name": "1.21.9",
-          "label": "PaperMC 1.21.9",
-          "mcVersion": "1.21.9",
-          "releaseDate": "2025-10-07",
-          "tags": ["ALPHA", "UNSTABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/aec002e77c7566e49494fdf05430b96078ffd1d7430e652d4f338fef951e7a10/paper-1.21.9-59.jar"
-        },
-        {
-          "id": "paper-1.21.8",
-          "name": "1.21.8",
-          "label": "PaperMC 1.21.8",
-          "mcVersion": "1.21.8",
-          "releaseDate": "2025-09-07",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/8de7c52c3b02403503d16fac58003f1efef7dd7a0256786843927fa92ee57f1e/paper-1.21.8-60.jar"
-        },
-        {
-          "id": "paper-1.21.7",
-          "name": "1.21.7",
-          "label": "PaperMC 1.21.7",
-          "mcVersion": "1.21.7",
-          "releaseDate": "2025-07-16",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/83838188699cb2837e55b890fb1a1d39ad0710285ed633fbf9fc14e9f47ce078/paper-1.21.7-32.jar"
-        },
-        {
-          "id": "paper-1.21.6",
-          "name": "1.21.6",
-          "label": "PaperMC 1.21.6",
-          "mcVersion": "1.21.6",
-          "releaseDate": "2025-06-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/35e2dfa66b3491b9d2f0bb033679fa5aca1e1fdf097e7a06a80ce8afeda5c214/paper-1.21.6-48.jar"
-        },
-        {
-          "id": "paper-1.21.5",
-          "name": "1.21.5",
-          "label": "PaperMC 1.21.5",
-          "mcVersion": "1.21.5",
-          "releaseDate": "2025-06-18",
-          "tags": ["ALPHA", "UNSTABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/2ae6ae22adf417699746e0f89fc2ef6cb6ee050a5f6608cee58f0535d60b509e/paper-1.21.5-114.jar"
-        },
-        {
-          "id": "paper-1.21.4",
-          "name": "1.21.4",
-          "label": "PaperMC 1.21.4",
-          "mcVersion": "1.21.4",
-          "releaseDate": "2025-06-09",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/5ee4f542f628a14c644410b08c94ea42e772ef4d29fe92973636b6813d4eaffc/paper-1.21.4-232.jar"
-        },
-        {
-          "id": "paper-1.21.3",
-          "name": "1.21.3",
-          "label": "PaperMC 1.21.3",
-          "mcVersion": "1.21.3",
-          "releaseDate": "2025-03-28",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/87e973e1d338e869e7fdbc4b8fadc1579d7bb0246a0e0cf6e5700ace6c8bc17e/paper-1.21.3-83.jar"
-        },
-        {
-          "id": "paper-1.21.1",
-          "name": "1.21.1",
-          "label": "PaperMC 1.21.1",
-          "mcVersion": "1.21.1",
-          "releaseDate": "2025-03-28",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/39bd8c00b9e18de91dcabd3cc3dcfa5328685a53b7187a2f63280c22e2d287b9/paper-1.21.1-133.jar"
-        },
-        {
-          "id": "paper-1.21",
-          "name": "1.21",
-          "label": "PaperMC 1.21",
-          "mcVersion": "1.21",
-          "releaseDate": "2025-08-10",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/ab9bb1afc3cea6978a0c03ce8448aa654fe8a9c4dddf341e7cbda1b0edaa73f5/paper-1.21-130.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.5",
-          "name": "1.20.5",
-          "label": "PaperMC 1.20.5",
-          "mcVersion": "1.20.5",
-          "releaseDate": "2024-04-29",
-          "tags": ["ALPHA", "UNSTABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/3cd7da2f8df92e082a501a39c674aab3c0343edd179b86f5baccaebfc9974132/paper-1.20.5-22.jar"
-        },
-        {
-          "id": "paper-1.20.4",
-          "name": "1.20.4",
-          "label": "PaperMC 1.20.4",
-          "mcVersion": "1.20.4",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/cabed3ae77cf55deba7c7d8722bc9cfd5e991201c211665f9265616d9fe5c77b/paper-1.20.4-499.jar"
-        },
-        {
-          "id": "paper-1.20.2",
-          "name": "1.20.2",
-          "label": "PaperMC 1.20.2",
-          "mcVersion": "1.20.2",
-          "releaseDate": "2023-12-03",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/ba340a835ac40b8563aa7eda1cd6479a11a7623409c89a2c35cd9d7490ed17a7/paper-1.20.2-318.jar"
-        },
-        {
-          "id": "paper-1.20.1",
-          "name": "1.20.1",
-          "label": "PaperMC 1.20.1",
-          "mcVersion": "1.20.1",
-          "releaseDate": "2024-09-21",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea/paper-1.20.1-196.jar"
-        },
-        {
-          "id": "paper-1.20",
-          "name": "1.20",
-          "label": "PaperMC 1.20",
-          "mcVersion": "1.20",
-          "releaseDate": "2023-06-13",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/1e4ccfc0599f491ee6fee4455d3722332ac5d78584fccd55cbb3b51e11504505/paper-1.20-17.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.6",
-          "name": "1.20.6",
-          "label": "PaperMC 1.20.6",
-          "mcVersion": "1.20.6",
-          "releaseDate": "2024-10-30",
-          "tags": ["LATEST", "STABLE"],
-          "url": "https://fill-data.papermc.io/v1/objects/4b011f5adb5f6c72007686a223174fce82f31aeb4b34faf4652abc840b47e640/paper-1.20.6-151.jar"
-        },
-        {
-          "id": "paper-1.20.4",
-          "name": "1.20.4",
-          "label": "PaperMC 1.20.4",
-          "mcVersion": "1.20.4",
-          "releaseDate": "2024-01-15",
-          "tags": ["lts"],
-          "url": "https://papermc.io/api/v1/paper/1.20.4/latest/download"
-        }
       ]
     },
     {
       "id": "pufferfish",
       "name": "Pufferfish",
-      "description": "Highly optimized Paper fork focused on performance for large servers.",
-      "logo": "https://raw.githubusercontent.com/pufferfish-gg/meta/main/pufferfish.png",
+      "description": "A fork optimized to work on well on every host.",
+      "logo": "https://s3-eu-west-1.amazonaws.com/tpd/logos/615d0e460899bf001dd4eacb/0x0.png",
       "versions": [
+        {
+          "id": "pufferfish-1.21.8",
+          "name": "1.21.8",
+          "label": "Pufferfish 1.21.8",
+          "mcVersion": "1.21.8",
+          "releaseDate": "2025-09-14",
+          "tags": ["STABLE", "OPTIMIZED"],
+          "url": "https://ci.pufferfish.host/job/Pufferfish-1.21/33/artifact/pufferfish-server/build/libs/pufferfish-paperclip-1.21.8-R0.1-SNAPSHOT-mojmap.jar"
+        },
         {
           "id": "pufferfish-1.20.4",
           "name": "1.20.4",
           "label": "Pufferfish 1.20.4",
           "mcVersion": "1.20.4",
-          "releaseDate": "2024-02-10",
-          "tags": ["latest", "high-performance"],
-          "url": "https://ci.pufferfish.host/job/Pufferfish-1.20/lastSuccessfulBuild/artifact/pufferfish-server/build/libs/pufferfish-paperclip-1.20.4-R0.1-SNAPSHOT-mojmap.jar"
+          "releaseDate": "2024-07-06",
+          "tags": ["STABLE", "OPTIMIZED"],
+          "url": "https://ci.pufferfish.host/job/Pufferfish-1.20/52/artifact/build/libs/pufferfish-paperclip-1.20.4-R0.1-SNAPSHOT-reobf.jar"
+        },
+        {
+          "id": "pufferfish-1.19.4",
+          "name": "1.19.4",
+          "label": "Pufferfish 1.19.4",
+          "mcVersion": "1.19.4",
+          "releaseDate": "2023-06-06",
+          "tags": ["STABLE", "OPTIMIZED"],
+          "url": "https://ci.pufferfish.host/job/Pufferfish-1.19/73/artifact/build/libs/pufferfish-paperclip-1.19.4-R0.1-SNAPSHOT-reobf.jar"
+        },
+        {
+          "id": "pufferfish-1.18.2",
+          "name": "1.18.2",
+          "label": "Pufferfish 1.18.2",
+          "mcVersion": "1.18.2",
+          "releaseDate": "2022-06-18",
+          "tags": ["STABLE", "OPTIMIZED"],
+          "url": "https://ci.pufferfish.host/job/Pufferfish-1.18/72/artifact/build/libs/pufferfish-paperclip-1.18.2-R0.1-SNAPSHOT-reobf.jar"
+        },
+        {
+          "id": "pufferfish-1.17.1",
+          "name": "1.17.1",
+          "label": "Pufferfish 1.17.1",
+          "mcVersion": "1.17.1",
+          "releaseDate": "2022-02-02",
+          "tags": ["STABLE", "OPTIMIZED"],
+          "url": "https://ci.pufferfish.host/job/Pufferfish-1.17/22/artifact/build/libs/Pufferfish-1.17.1-R0.1-SNAPSHOT.jar"
         }
       ]
     },
     {
       "id": "purpur",
       "name": "Purpur",
-      "description": "Feature-rich Paper fork with tons of configurable options.",
-      "logo": "https://raw.githubusercontent.com/PurpurMC/Purpur/master/docs/assets/logo.png",
+      "description": "A fork of PaperMC but with more options.",
+      "logo": "https://purpurmc.org/docs/images/purpur-small.png",
       "versions": [
         {
           "id": "purpur-1.20.4",
@@ -338,6 +77,58 @@
           "url": "https://api.purpurmc.org/v2/purpur/1.20.4/latest/download"
         }
       ]
+    },
+    {
+      "id": "velocity",
+      "name": "Velocity",
+      "description": "A stable way for your proxy and very secure",
+      "logo": "https://assets.papermc.io/brand/velocity_logo_blue.min.svg",
+      "versions": []
+    },
+    {
+      "id": "waterfall",
+      "name": "waterfall",
+      "description": "A Bungeecord fork from PaperMC",
+      "logo": "https://static.vecteezy.com/system/resources/previews/009/663/548/non_2x/water-drop-icon-transparent-free-png.png",
+      "versions": []
+    },
+    {
+      "id": "folia",
+      "name": "Folia",
+      "description": "A fork of PaperMC optimized for high performance",
+      "logo": "https://files.catbox.moe/4b3qex.png",
+      "versions": []
+    },
+    {
+      "id": "leaves",
+      "name": "Leaves",
+      "description": "A fork of PaperMC balanced in features and performance",
+      "logo": "https://docs.leavesmc.org/logo.svg",
+      "versions": []
+    },
+    {
+      "id": "nukkit",
+      "name": "Nukkit",
+      "description": "The main platform for bedrock servers",
+      "logo": "https://avatars.githubusercontent.com/u/12780190?s=200&v=4",
+      "versions": [
+        {
+          "id": "nukkit",
+          "name": "Nukkit",
+          "label": "Nukkit",
+          "mcVersion": "Newest",
+          "releaseDate": "",
+          "tags": ["LATEST", "BEDROCK"],
+          "url": "https://repo.opencollab.dev/api/maven/latest/file/maven-snapshots/cn/nukkit/nukkit/1.0-SNAPSHOT?extension=jar"
+        }
+      ]
+    },
+    {
+      "id": "spigot",
+      "name": "SpigotMC",
+      "description": "The official SpigotMC jar with basic features",
+      "logo": "https://avatars.githubusercontent.com/u/4350249?s=200&v=4",
+      "versions": []
     }
   ]
 }

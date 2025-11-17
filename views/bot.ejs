@@ -10,6 +10,27 @@
     <script src="/socket.io/socket.io.js"></script>
 
     <style>
+      :root{
+        --bg:#0b0f14;
+        --card:#0e1116;
+        --muted:#9aa3ad;
+        --text:#e6eef8;
+        --border:rgba(255,255,255,0.06);
+        --border-strong:rgba(255,255,255,0.12);
+        --accent:#10b981;
+        --accent-2:#60a5fa;
+        --hover:rgba(255,255,255,0.02);
+
+        /* New awwwards-y vibes */
+        --glass:rgba(255,255,255,0.06);
+        --glass-2:rgba(255,255,255,0.1);
+        --ink:#0b0f14;
+        --ink-2:#0f141b;
+        --shine:linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+        --glow:0 10px 30px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset;
+        --ring:0 0 0 1px rgba(255,255,255,0.16);
+      }
+
       .entry-actions { position: relative; }
       .more-btn {
         background: transparent; border: none; color: #bfc8d4; cursor: pointer;
@@ -52,333 +73,423 @@
       *::-webkit-scrollbar-thumb:hover{background-color:#2a2a2a;} *::-webkit-scrollbar-corner{background:transparent;}
 
       #console,#entries,.modal-body,.modal-left,.modal-right,.code-area,textarea,.modal{scrollbar-width:thin;scrollbar-color:#212121 transparent;}
-      #console{max-height:320px;overflow:auto;padding:12px;border-radius:8px;background:#0b0c0e;}
-      #entries{max-height:420px;overflow:auto;padding-right:8px;}
-      .modal-body{max-height:520px;overflow:auto;}
-      .modal-left,.modal-right{max-height:520px;overflow:auto;}
-      .code-area{max-height:520px;overflow:auto;padding:8px;}
-      textarea{max-height:520px;overflow:auto;}
-      .entry{display:flex;justify-content:space-between;gap:12px;padding:8px 6px;align-items:center;border-radius:6px;}
-      .entry:hover{background:rgba(255,255,255,0.02);}
+      #console{height:375px;overflow:auto;padding:12px;border-radius:8px;background:#0b0c0e; white-space: pre-wrap; position: relative; width: 1100px;}
 
-      /* Dock mai lung / lat */
-      .dock-wrap{
-        position:fixed;
-        right:18px;
-        bottom:18px;
-        z-index:99999;
-        max-width:100%;
-      }
-      .dock{
-        display:flex;
-        gap:12px;
-        background:rgba(11,12,14,0.78);
-        padding:10px 18px;
-        border-radius:16px;
-        box-shadow:0 8px 26px rgba(0,0,0,0.65);
-        align-items:center;
-      }
-      .dock-item{
+      /* FILES LIST – full-width, modern cards */
+      #filesModal .modal{
+        position:relative;
+        width:92vw;
+        max-width:1280px;
+        height:86vh;
+        max-height:86vh;
         display:flex;
         flex-direction:column;
-        align-items:center;
-        gap:6px;
-        padding:8px 10px;
-        cursor:pointer;
-        user-select:none;
-        color:#d1d8de;
-        text-decoration:none;
+        background:var(--bg);
+        color:var(--text);
       }
-      .dock-item .icon{
-        width:36px;
-        height:36px;
+      #filesModal .modal-body{
+        flex:1;
         display:flex;
+        flex-direction:column;
+      }
+      #filesModal .modal-left{ flex:1; }
+      #filesModal .modal-right{ display:none; }
+
+      /* header din Files: breadcrumbs la stânga, Upload/New la dreapta */
+      #filesModal .modal-left > div:first-child{
+        display:flex;
+        justify-content:space-between;
         align-items:center;
-        justify-content:center;
-        border-radius:8px;
+        margin-bottom:8px;
       }
-      .dock-item .label{
-        font-size:11px;
-        color:#c3cad2;
-        margin-top:4px;
+      #fileUploadModal{ display:none; } /* ascunde input-ul, folosim label-ul ca buton */
+
+      /* grid entries mare cât popup-ul */
+      #entries{
+        flex:1;
+        overflow:auto;
+        padding-right:8px;
+        display:grid;
+        grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
+        gap:12px;
+        padding-top:8px;
       }
-      .dock-item:hover{
-        transform:translateY(-3px);
-        transition:transform .12s;
+
+      /* Modern file cards */
+      .entry{
+        display:flex; justify-content:space-between; gap:12px; padding:12px 14px; align-items:center;
+        border-radius:12px; background:var(--card); border:1px solid var(--border);
+        box-shadow:0 8px 20px rgba(0,0,0,0.35);
+        transition:transform .1s ease, box-shadow .1s ease, border-color .1s ease, background .1s ease;
       }
+      .entry:hover{
+        background:#10141b;
+        border-color:var(--border-strong);
+        transform:translateY(-1px);
+        box-shadow:0 12px 30px rgba(0,0,0,0.55);
+      }
+      .entry-name{ font-size:14px; font-weight:600; color:var(--text); }
+      .entry-meta{ font-size:12px; color:var(--muted); margin-top:2px; }
+
+      /* Modern editor (larg) */
+      #editorModal .modal{
+        width:92vw;
+        max-width:1280px;
+        max-height:90vh;
+        display:flex;
+        flex-direction:column;
+        background:var(--bg);
+        color:var(--text);
+      }
+      #bigEditor{ margin-top:10px; display:flex; flex-direction:column; gap:10px; }
+
+      /* Code area – line numbers */
+      .code-area{
+        width:100%;
+        max-height:60vh;
+        overflow:auto;
+        padding:0;
+        background:#05070b;
+        border-radius:10px;
+        border:1px solid rgba(148,163,184,0.45);
+        font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size:13px;
+        line-height:1.4;
+        counter-reset:line;
+      }
+      .code-area div {
+        position: relative;
+        padding: 0px 12px 0px 36px;
+        min-height: 18px;
+        white-space: pre;
+      }
+      .code-area div::before {
+        counter-increment: line;
+        content: counter(line);
+        position: absolute;
+        left: 8px;
+        top: 2.5px;
+        bottom: 0;
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-end;
+        width: 22px;
+        font-size: 11px;
+        color: #4b5563;
+      }
+      textarea{
+        width:100%;
+        max-height:60vh;
+        overflow:auto;
+        padding:10px;
+        border-radius:10px;
+        border:1px solid rgba(148,163,184,0.45);
+        background:#05070b;
+        color:#e6eef8;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size:13px;
+        resize:vertical;
+      }
+      .code-area:focus, #textArea:focus{ outline:none; box-shadow:none; border-color:rgba(59,130,246,0.8); }
+
+      /* Syntax highlight colors */
+      .code-area .kw{color:#93c5fd;}
+      .code-area .str{color:#f97316;}
+      .code-area .num{color:#a5b4fc;}
+      .code-area .com{color:#6b7280;font-style:italic;}
+      .code-area .fn{color:#4ade80;}
+      .code-area .cls{color:#facc15;}
+      .code-area .prop{color:#f9a8d4;}
+      .code-area .tag{color:#f97316;}
+      .code-area .attr{color:#fde68a;}
+
+      /* Dock */
+      .dock-wrap{
+        position:fixed; right:18px; bottom:18px; width:520px; z-index:99999; max-width:100%;
+      }
+      .dock{
+        display:flex; gap:12px; background:rgba(11,12,14,0.78);
+        padding:10px 18px; border-radius:16px; width:100%;
+        box-shadow:0 8px 26px rgba(0,0,0,0.65); align-items:center;
+      }
+      .dock-item{ display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 10px; cursor:pointer; user-select:none; color:#d1d8de; text-decoration:none; }
+      .dock-item .icon{ width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:8px; }
+      .dock-item .label{ font-size:11px; color:#c3cad2; margin-top:4px; }
+      .dock-item:hover{ transform:translateY(-3px); transition:transform .12s; }
 
       .info-grid{display:grid;gap:10px;}
       .info-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:#0e1116;border:1px solid rgba(255,255,255,0.05);border-radius:10px;}
       .info-key{color:#9aa3ad;font-size:13px;}
       .info-val{color:#e6eef8;font-weight:700;font-size:14px;word-break:break-all;}
       .addr-wrap{display:flex;gap:8px;align-items:center;}
-      .addr-input{flex:1;padding:10px 12px;border-radius:10px;background:#0b0f14;color:#e6eef8;border:1px solid rgba(255,255,255,0.06);outline:none;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+      .addr-input{flex:1;padding:10px 12px;border-radius:10px;background:#0b0f14;color:#e6eef8;border:1px solid rgba(255,255,255,0.06);outline:none;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
       .copy-btn{background:#10b981;color:#041015;border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(16,185,129,.25);}
       .copy-btn:hover{filter:brightness(1.06);}
       .modal .hint{font-size:12px;color:#9aa3ad;}
       .disabled{opacity:.5;pointer-events:none;filter:saturate(.3);}
       .hidden{display:none !important;}
 
-      /* === Store modal (Versions / Plugins) === */
+      /* === Store modal (Awwwards redesign) === */
       #storeModal .modal{
-        width:90vw;
-        max-width:1200px;
-        height:90vh;
-        max-height:90vh;
-        display:flex;
-        flex-direction:column;
+        width:90vw; max-width:1200px; height:90vh; max-height:90vh;
+        display:flex; flex-direction:column;
+        color:var(--text);
+        background:
+          radial-gradient(1000px 600px at 120% -10%, rgba(96,165,250,0.08), transparent 60%),
+          radial-gradient(900px 500px at -10% 120%, rgba(16,185,129,0.10), transparent 60%),
+          linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+        backdrop-filter: blur(10px) saturate(150%);
+        border:1px solid rgba(255,255,255,0.08);
+        border-radius:18px;
+        box-shadow:0 30px 80px rgba(0,0,0,0.6);
       }
       .store-header{
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:16px;
-        padding-bottom:8px;
+        display:flex;align-items:center;justify-content:space-between;gap:16px;
+        padding:18px 18px 12px 18px;
         border-bottom:1px solid rgba(255,255,255,0.08);
+        position:relative;
       }
-      .store-header-main{
-        display:flex;
-        align-items:flex-start;
-        gap:10px;
+      .store-header:after{
+        content:""; position:absolute; left:18px; right:18px; bottom:-1px; height:1px;
+        background:linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+        opacity:.3;
       }
-      .store-subtitle{
-        color:#9aa3ad;
-        font-size:13px;
-        margin-top:4px;
-      }
-      .store-header-right{
-        display:flex;
-        align-items:center;
-        gap:10px;
-      }
-      .store-tabs{
-        display:flex;
-        align-items:center;
-        gap:8px;
-      }
+      .store-header-main{display:flex;align-items:center;gap:12px;}
+      .store-subtitle{color:#b8c3cf;font-size:12.5px;margin-top:4px;}
+      .store-header-right{display:flex;align-items:center;gap:10px;}
+      .store-tabs{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.04);padding:6px;border-radius:999px;border:1px solid rgba(255,255,255,0.06);}
       .store-tab{
-        border-radius:999px;
-        border:0;
-        background:rgba(255,255,255,0.04);
-        color:#e5edf7;
-        font-size:13px;
-        padding:6px 14px;
-        cursor:pointer;
-        white-space:nowrap;
+        border-radius:999px;border:1px solid rgba(255,255,255,0.1);
+        background:transparent;
+        color:#e5edf7;font-size:13px;padding:8px 14px;cursor:pointer;white-space:nowrap;
+        transition:all .15s ease;
       }
-      .store-tab:hover{
-        background:rgba(255,255,255,0.08);
-      }
+      /* Active = alb, nu negru */
       .store-tab.active{
-        background:#10b981;
-        color:#02110b;
-        box-shadow:0 0 0 1px rgba(16,185,129,0.35);
+        background:#ffffff;color:#0b0f14;border-color:#ffffff;
+        box-shadow:0 6px 18px rgba(255,255,255,0.1), 0 0 0 2px rgba(255,255,255,0.08);
       }
-      .store-close{
-        border-radius:999px;
-      }
-      .store-body{
-        flex:1;
-        display:flex;
-        flex-direction:column;
-        overflow:hidden;
-      }
-      #storeContent{
-        flex:1;
-        margin-top:8px;
-        overflow:auto;
-        padding-right:6px;
-      }
+      .store-tab:hover{transform:translateY(-1px);}
+
+      .store-close{border-radius:999px;}
+
+      .store-body{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+      #storeContent{flex:1;margin-top:8px;overflow:auto;padding:12px 14px 14px 14px;}
       .store-content-grid{
-        display:grid;
-        grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
-        gap:12px;
-        align-content:flex-start;
+        display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+        gap:14px;align-content:flex-start;
       }
+
+      /* Provider card – premium */
       .store-provider-card{
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:10px;
-        padding:10px 12px;
-        border-radius:12px;
-        background:#0e1116;
+        display:flex;align-items:center;justify-content:space-between;gap:12px;
+        padding:14px;border-radius:16px;
+        background:rgba(255,255,255,0.04);
         border:1px solid rgba(255,255,255,0.06);
-        cursor:pointer;
-        text-align:left;
-        transition:transform .1s ease, box-shadow .1s ease, border-color .1s ease, background .1s ease;
+        cursor:pointer;text-align:left;
+        transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+        position:relative; overflow:hidden;
       }
+      .store-provider-card:before{
+        content:""; position:absolute; inset:0; background:linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.05), transparent 70%);
+        transform:translateX(-100%); transition:transform .6s ease;
+      }
+      .store-provider-card:hover:before{ transform:translateX(100%); }
       .store-provider-card:hover{
-        transform:translateY(-1px);
-        background:#10141b;
-        border-color:rgba(255,255,255,0.12);
-        box-shadow:0 10px 30px rgba(0,0,0,0.55);
+        background:rgba(255,255,255,0.06);
+        border-color:rgba(255,255,255,0.14);
+        transform:translateY(-2px);
+        box-shadow:0 20px 50px rgba(0,0,0,0.55);
       }
       .store-provider-logo{
-        width:40px;
-        height:40px;
-        border-radius:999px;
-        background:rgba(255,255,255,0.03);
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        overflow:hidden;
+        width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,0.06);
+        display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid rgba(255,255,255,0.08);
       }
-      .store-provider-logo img{
-        width:32px;
-        height:32px;
-        object-fit:contain;
-      }
-      .store-provider-logo-placeholder{
-        font-weight:700;
-        font-size:18px;
-        color:#e5edf7;
-      }
-      .store-provider-body{
-        flex:1;
-        min-width:0;
-      }
-      .store-provider-name{
-        font-size:14px;
-        font-weight:700;
-        color:#e6eef8;
-      }
-      .store-provider-desc{
-        font-size:12px;
-        color:#9aa3ad;
-        margin-top:2px;
-      }
-      .store-provider-chevron{
-        color:#6b7280;
-        font-size:13px;
-      }
+      .store-provider-logo img{width:36px;height:36px;object-fit:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,0.5));}
+      .store-provider-logo-placeholder{font-weight:800;font-size:18px;color:#e5edf7;}
+      .store-provider-body{flex:1;min-width:0;}
+      .store-provider-name{font-size:15px;font-weight:700;color:#e6eef8;letter-spacing:.2px;}
+      .store-provider-desc{font-size:12.5px;color:#9aa3ad;margin-top:3px;opacity:.9;}
+      .store-provider-chevron{color:#aab3bf;font-size:13px;}
+
+      /* Provider details header — logo + text side by side (nu sub) */
       .store-provider-header{
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:12px;
-        margin-bottom:10px;
-      }
-      .store-back-btn{
-        border-radius:999px;
-        border:0;
-        background:rgba(255,255,255,0.04);
-        color:#e5edf7;
-        font-size:12px;
-        padding:6px 12px;
-        cursor:pointer;
-        display:flex;
-        align-items:center;
-        gap:6px;
-      }
-      .store-back-btn:hover{
-        background:rgba(255,255,255,0.08);
+        display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px;
       }
       .store-provider-header-main{
-        display:flex;
-        align-items:center;
-        gap:10px;
-        flex:1;
+        display:flex;align-items:center;gap:12px;flex:1;min-width:0;
+        padding:10px 12px;border-radius:14px;background:rgba(255,255,255,0.04);
+        border:1px solid rgba(255,255,255,0.06);
       }
-      .store-provider-header-logo{
-        width:32px;
-        height:32px;
-        object-fit:contain;
+      .store-provider-header-logo{width:40px;height:40px;object-fit:contain;}
+      .store-provider-header-name{font-size:16px;font-weight:800;color:#e6eef8;}
+      .store-provider-header-desc{font-size:12.5px;color:#9aa3ad;margin-top:2px;}
+      .store-back-btn{
+        border-radius:12px;border:1px solid rgba(255,255,255,0.1);
+        background:rgba(255,255,255,0.06);color:#e5edf7;font-size:12.5px;padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;
       }
-      .store-provider-header-name{
-        font-size:15px;
-        font-weight:700;
-        color:#e6eef8;
-      }
-      .store-provider-header-desc{
-        font-size:12px;
-        color:#9aa3ad;
-      }
-      .store-version-list{
-        display:flex;
-        flex-direction:column;
-        gap:8px;
-      }
+      .store-back-btn:hover{background:rgba(255,255,255,0.1);transform:translateY(-1px);}
+
+      .store-note{font-size:12.5px;color:#9aa3ad;margin-bottom:10px;padding-left:2px;}
+
+      .store-version-list{display:flex;flex-direction:column;gap:10px;}
       .store-version-row{
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:10px;
-        padding:8px 10px;
-        border-radius:10px;
-        background:#0b0f14;
-        border:1px solid rgba(255,255,255,0.04);
-        cursor:pointer;               /* <-- clickable */
-        transition: transform .08s ease, background .08s ease, border-color .08s ease;
+        display:flex;align-items:center;justify-content:space-between;gap:10px;
+        padding:12px 14px;border-radius:14px;background:rgba(255,255,255,0.03);
+        border:1px solid rgba(255,255,255,0.06);cursor:pointer;
+        transition: transform .12s ease, background .12s ease, border-color .12s ease, box-shadow .12s ease;
       }
       .store-version-row:hover{
-        background:#0d131a;
-        border-color:rgba(255,255,255,0.08);
-        transform: translateY(-1px);
+        background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);transform:translateY(-1px);
+        box-shadow:0 12px 30px rgba(0,0,0,0.45);
       }
-      .store-version-meta{
-        min-width:0;
-      }
-      .store-version-name{
-        font-size:13px;
-        font-weight:600;
-        color:#e6eef8;
-      }
-      .store-version-sub{
-        font-size:11px;
-        color:#9aa3ad;
-        margin-top:2px;
-      }
-      .store-version-tags{
-        display:flex;
-        flex-wrap:wrap;
-        gap:6px;
-        justify-content:flex-end;
-      }
-      .store-note{
-        font-size:12px;
-        color:#9aa3ad;
-        margin-bottom:6px;
-      }
-      .store-placeholder,
-      .store-empty,
-      .store-loading,
-      .store-error{
-        font-size:13px;
-        color:#9aa3ad;
-      }
-      .store-placeholder strong{color:#e6eef8;}
+      .store-version-meta{min-width:0;}
+      .store-version-name{font-size:14px;font-weight:700;color:#e6eef8;}
+      .store-version-sub{font-size:12px;color:#9aa3ad;margin-top:2px;}
+      .store-version-tags{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;}
+      .pill{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:700;letter-spacing:.3px;}
+      .pill-green{background:rgba(16,185,129,0.16);color:#bbf7d0;border:1px solid rgba(16,185,129,0.4);}
+      .pill-muted{background:rgba(148,163,184,0.16);color:#e5e7eb;border:1px solid rgba(148,163,184,0.45);}
+
+      .store-placeholder,.store-empty,.store-loading,.store-error{font-size:13px;color:#9aa3ad;padding:8px;}
       .store-error{color:#fecaca;}
-      .pill{
-        display:inline-flex;
-        align-items:center;
-        border-radius:999px;
-        padding:3px 8px;
-        font-size:11px;
-        font-weight:500;
+
+      /* === Modrinth plugins UI in Store (cards kept) === */
+      .mr-plugins-root{display:flex;flex-direction:column;height:100%;}
+      .mr-plugins-header{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+      .mr-plugins-header input{
+        flex:1;padding:10px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.14);
+        background:rgba(255,255,255,0.04);color:var(--text);font-size:13px;outline:none;
       }
-      .pill-green{
-        background:rgba(16,185,129,0.16);
-        color:#bbf7d0;
-        border:1px solid rgba(16,185,129,0.4);
+      .mr-plugins-header input::placeholder{color:#9aa3ad;}
+      .mr-plugin-grid{
+        flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;align-content:flex-start;overflow:auto;padding-right:4px;
       }
-      .pill-muted{
-        background:rgba(148,163,184,0.16);
-        color:#e5e7eb;
-        border:1px solid rgba(148,163,184,0.45);
+      .mr-plugin-card{
+        display:flex;flex-direction:column;border-radius:16px;background:rgba(255,255,255,0.04);
+        border:1px solid rgba(255,255,255,0.06);padding:10px;cursor:pointer;
+        transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+        position:relative;
+      }
+      .mr-plugin-card:hover{
+        background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.14);
+        transform:translateY(-2px);box-shadow:0 16px 40px rgba(0,0,0,0.55);
+      }
+      .mr-plugin-icon{width:100%;height:140px;border-radius:10px;object-fit:cover;margin-bottom:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06);}
+      .mr-plugin-title{font-size:14px;font-weight:700;color:var(--text);}
+      .mr-plugin-desc{font-size:12px;color:var(--muted);margin-top:4px;min-height:32px;}
+      .mr-plugin-footer{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:6px;}
+      .mr-plugin-install-btn{
+        border-radius:999px;border:0;background:#10b981;color:#02110b;font-size:12px;padding:8px 12px;cursor:pointer;white-space:nowrap;font-weight:800;
+      }
+      .mr-plugin-install-btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
+
+      /* Section titles */
+      .sectionTitle{font-size:15px;margin-top:8px;font-weight:700;color:var(--text);}
+
+      /* OLD .boxGrid kept (unused in new modal for selects but backward-compatible) */
+      .boxGrid{margin-top:10px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+      .selectBox{background:#0e1116;border-radius:10px;border:1px solid rgba(255,255,255,0.06);padding:10px;font-size:13px;text-align:center;cursor:pointer;color:var(--text);transition:background .1s ease, border-color .1s ease, transform .1s ease, box-shadow .1s ease;}
+      .selectBox:hover{background:#10141b;border-color:rgba(255,255,255,0.16);transform:translateY(-1px);box-shadow:0 8px 22px rgba(0,0,0,0.5);}
+      .selectBox.selected{background:#022c22;border-color:#10b981;box-shadow:0 0 0 1px rgba(16,185,129,0.5);}
+
+      .downloadBtnFinal{margin-top:18px;border-radius:999px;border:0;padding:10px 14px;font-size:14px;font-weight:800;cursor:pointer;background:#3b82f6;color:white;}
+      .downloadBtnFinal:disabled{opacity:0.5;cursor:not-allowed;}
+
+      /* === Install Plugin Modal — Awwwards redesign with SELECTORS === */
+      #mrPluginModal .modal{
+        width:860px; max-width:92vw;
+        display:flex; flex-direction:column;
+        background:
+          radial-gradient(900px 500px at 120% -20%, rgba(96,165,250,0.10), transparent 60%),
+          radial-gradient(900px 500px at -10% 120%, rgba(16,185,129,0.12), transparent 60%),
+          linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+        border:1px solid rgba(255,255,255,0.1);
+        border-radius:20px;
+        color:var(--text);
+        box-shadow:0 35px 90px rgba(0,0,0,0.65);
+        backdrop-filter: blur(150px);
+      }
+      #mrPluginModal .modal-header{
+        padding:18px;border-bottom:1px solid rgba(255,255,255,0.08);
+        display:flex;align-items:center;justify-content:space-between;
+      }
+      #mrPluginModal .modal-title{font-size:18px;font-weight:900;letter-spacing:.3px;}
+      #mrPluginModal .modal-body{padding:16px;display:flex;flex-direction:column;gap:14px;}
+
+      /* Select controls */
+      .select-control{display:flex;flex-direction:column;gap:8px;}
+      .select-control label{font-size:12.5px;color:#aeb8c5;font-weight:700;letter-spacing:.2px;}
+      .select-wrap{
+        position:relative; display:block;
+        background:rgba(255,255,255,0.05);
+        border:1px solid rgba(255,255,255,0.12);
+        border-radius:12px; padding:0; overflow:hidden;
+      }
+      .select-wrap select{
+        appearance:none; -webkit-appearance:none; -moz-appearance:none;
+        width:100%; background:transparent; border:0; outline:none;
+        background-color: black;
+        color:#cfcfcfd7; padding:12px 40px 12px 12px; font-weight:700; letter-spacing:.2px;
+        cursor:pointer;
+      }
+      .select-wrap i{
+        position:absolute; right:12px; top:50%; transform:translateY(-50%); pointer-events:none; color:#9fb0c5; font-size:14px;
+      }
+
+      /* Footer actions */
+      #mrPluginModal .downloadBtnFinal{
+        align-self:flex-end; padding:12px 16px; font-size:13.5px; letter-spacing:.3px; background:#10b981;color:#ffffff;
+        border-radius:14px; border:0; font-weight:900;
+        box-shadow:0 10px 22px rgba(16,185,129,.18);
+      }
+      #mrPluginModal .downloadBtnFinal:hover{filter:brightness(1.06); transform:translateY(-1px);}
+      #mrPluginModal .downloadBtnFinal:disabled{opacity:.5; transform:none;}
+
+      /* Info chips under title */
+      .mr-title-sub{font-size:12.5px;color:#aeb8c5;margin-top:4px;}
+
+      /* Modal overlay shells (kept) */
+      .modal-overlay{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:10000;}
+      .modal-overlay.show{display:flex;}
+
+      /* General buttons */
+      .icon-btn{
+        border-radius:10px;border:1px solid rgba(255,255,255,0.10);
+        background:rgba(255,255,255,0.04);color:#e6eef8;
+        padding:8px 12px; font-weight:700; cursor:pointer;
+        transition: all .15s ease;
+      }
+      .icon-btn:hover{background:rgba(255,255,255,0.10);transform:translateY(-1px);}
+
+      .modal{background:var(--ink-2); border:1px solid var(--border); border-radius:14px; backdrop-filter: blur(100px);}
+      .modal-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.06);}
+      .modal-title{font-weight:800;font-size:16px;}
+      .modal-close{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e6eef8;border-radius:10px;padding:6px 8px;cursor:pointer;}
+      .modal-body{padding:12px 14px;}
+
+      /* Topbar tweaks */
+      .topbar .icon-btn{font-weight:800}
+      .window-header .dot{width:12px;height:12px;border-radius:50%;display:inline-block}
+
+      .jump-btn{
+        position: fixed; right: 32px; bottom: 90px; z-index: 20; padding: 6px 10px;
+        border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.45);
+        color: #fff; cursor: pointer; backdrop-filter: blur(2px);
+        opacity: 0; visibility: hidden; transform: translateY(6px);
+        transition: opacity .15s ease, transform .15s ease, visibility 0s linear .15s;
+      }
+      .jump-btn:hover{ background: rgba(0,0,0,0.6); }
+      .jump-btn i{ pointer-events: none; }
+      .jump-btn.show{ opacity: 1; visibility: visible; transform: translateY(0); transition: opacity .15s ease, transform .15s ease, visibility 0s; }
+
+      .command:focus { outline: none; box-shadow: none; }
+
+      .icon-stop {
+        width: 70px; height: 33px; cursor: pointer; border: none;
+        border: 0.1px solid rgba(182, 182, 182, 0.103); color: gray; background-color: transparent; opacity: 1; border-radius: 12px;
       }
     </style>
-
-    <script>
-      const darkFavicon="/images/adpanel-white.png", lightFavicon="/images/adpanel-dark.png";
-      function updateIcons(){
-        const isDark=window.matchMedia("(prefers-color-scheme: dark)").matches;
-        document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(el=>el.remove());
-        const linkF=document.createElement("link"); linkF.rel="icon"; linkF.type="image/png";
-        linkF.href=isDark?darkFavicon:lightFavicon; document.head.appendChild(linkF);
-      }
-      updateIcons(); window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",updateIcons);
-    </script>
   </head>
 
   <body>
@@ -395,13 +506,13 @@
           <button class="icon-btn" id="storeBtn" onclick="openStoreModal()"><i class="fa-solid fa-store"></i> Store</button>
           <button class="icon-btn" onclick="openInfoModal()"><i class="fa-solid fa-circle-info"></i> Informations</button>
           <button class="icon-btn" id="runBtn" onclick="run()" title="Run selected"><i class="fa-solid fa-play"></i> Run</button>
-          <button class="icon-btn" id="stopBtn" onclick="stop()" title="Stop process"><i class="fa-solid fa-stop"></i> Stop</button>
+          <button class="icon-stop" id="stopBtn" onclick="stop()" title="Stop process"><i class="fa-solid fa-stop"></i> Stop</button>
         </div>
       </div>
 
       <div class="main-stage" style="margin-top:2px">
-        <div class="console-panel" role="main" aria-label="Console panel">
-          <div class="console-window">
+        <div class="console-panel" role="main" aria-label="Console panel" style="position: absolute; display: flex; justify-content: center; align-items: center; margin-left: 20px;">
+          <div class="console-window" style="height: 500px; backdrop-filter: blur(15px);">
             <div class="window-header">
               <div style="display:flex;align-items:center;gap:8px">
                 <span class="dot" style="background:#ff5f56;cursor:pointer" onclick="stop()"></span>
@@ -423,8 +534,8 @@
 
             <pre id="console" aria-live="polite"></pre>
 
-            <div class="cmd-row" id="cmdRow">
-              <input id="cmdInput" type="text" placeholder="Type a command and press Enter (will be sent to running process)" />
+            <div class="cmd-row" id="cmdRow" style="margin-top: 4px;">
+              <input id="cmdInput" class="command" type="text" placeholder="Type a command and press Enter (will be sent to running process)" />
               <button class="icon-btn" id="sendBtn" onclick="sendCommand()" title="Send">Send</button>
               <button class="icon-btn" id="clearBtn" onclick="clearConsole()" title="Clear">Clear</button>
             </div>
@@ -486,9 +597,9 @@
 
         <div class="modal-body">
           <div class="modal-left">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div>
               <div id="breadcrumbs" style="color:var(--muted);font-size:13px"></div>
-              <div style="display:flex;gap:8px;align-items:center">
+              <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
                 <label class="icon-btn" id="uploadLabel" for="fileUploadModal" style="cursor:pointer"><i class="fa-solid fa-upload"></i> Upload</label>
                 <input id="fileUploadModal" type="file" />
                 <button class="icon-btn" id="newBtn" onclick="createNew()" title="New file/folder"><i class="fa-solid fa-file-circle-plus"></i> New</button>
@@ -497,10 +608,7 @@
             <ul id="entries" role="list"></ul>
           </div>
 
-          <div class="modal-right">
-            <div style="color:var(--muted);font-size:13px;margin-bottom:8px">Here you can edit your application.</div>
-            <div style="color:var(--muted);font-size:12px">We have actions for all these kinds of things.</div>
-          </div>
+          <div class="modal-right"></div>
         </div>
       </div>
     </div>
@@ -565,8 +673,8 @@
           </div>
           <div class="store-header-right">
             <div class="store-tabs" id="storeTabs">
-              <button class="store-tab active" id="storeTabVersions">Versions</button>
-              <button class="store-tab" id="storeTabPlugins">Plugins</button>
+              <button class="store-tab active" id="storeTabVersions"><i class="fa-solid fa-cubes-stacked"></i>&nbsp; Versions</button>
+              <button class="store-tab" id="storeTabPlugins"><i class="fa-solid fa-plug"></i>&nbsp; Plugins/Mods</button>
             </div>
             <button class="modal-close store-close" id="storeModalClose" title="Close (Esc)">
               <i class="fa-solid fa-xmark"></i>
@@ -575,6 +683,40 @@
         </div>
         <div class="store-body">
           <div id="storeContent"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modrinth Plugin Modal -->
+    <div id="mrPluginModal" class="modal-overlay" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mrPluginModalTitle">
+        <div class="modal-header">
+          <div>
+            <div class="modal-title" id="mrPluginModalTitle">Install Plugin</div>
+            <div class="mr-title-sub" id="mrPluginName"></div>
+          </div>
+          <div><button class="modal-close" id="mrPluginModalClose" title="Close (Esc)"><i class="fa-solid fa-xmark"></i></button></div>
+        </div>
+        <div class="modal-body">
+          <div class="select-control">
+            <label for="mrPlatformSelect">Platform</label>
+            <div class="select-wrap">
+              <!-- Populated dynamically -->
+              <select id="mrPlatformSelect" aria-label="Select platform"></select>
+              <i class="fa-solid fa-chevron-down"></i>
+            </div>
+          </div>
+
+          <div class="select-control">
+            <label for="mrVersionSelect">Minecraft Version</label>
+            <div class="select-wrap">
+              <!-- Populated dynamically -->
+              <select id="mrVersionSelect" aria-label="Select Minecraft version"></select>
+              <i class="fa-solid fa-chevron-down"></i>
+            </div>
+          </div>
+
+          <button id="mrPluginInstallBtn" class="downloadBtnFinal" disabled>Install Plugin</button>
         </div>
       </div>
     </div>
@@ -641,7 +783,6 @@
       let NODE_ID = null;
       let NODE_API_BASE = `/api/nodes/server/${encodeURIComponent(bot)}`;
 
-      // [SSE] — sursa de log dacă e remote
       let logSource = null;
       function attachLogStreamIfRemote(){
         if (!REMOTE_MODE) return;
@@ -649,26 +790,23 @@
         const url = `${NODE_API_BASE}/logs`;
         const es = new EventSource(url);
         logSource = es;
-
         es.addEventListener('hello', (e) => {});
         es.addEventListener('keepalive', () => {});
         es.onmessage = (ev) => {
           try {
             const j = JSON.parse(ev.data);
             if (j && typeof j.line === 'string') {
-              consoleEl.textContent += j.line;
-              consoleEl.scrollTop = consoleEl.scrollHeight;
+              appendToConsole(j.line);
             }
           } catch {
-            consoleEl.textContent += (ev.data || "") + "\n";
-            consoleEl.scrollTop = consoleEl.scrollHeight;
+            appendToConsole(ev.data || "");
           }
         };
         es.onerror = () => {};
       }
       window.addEventListener('beforeunload', () => { try { if (logSource) logSource.close(); } catch {} });
 
-      // Wrapper-e care aleg automat local vs remote
+      // API wrappers
       async function topoInfo(){
         try{
           const r = await fetch(`${NODE_API_BASE}/info`);
@@ -792,7 +930,7 @@
         return true;
       }
 
-      // ——— Global perms
+      // perms
       let IS_ADMIN = false;
       let PERMS = {
         files_read:false, files_delete:false, files_rename:false, console_write:false,
@@ -800,8 +938,14 @@
       };
       function hasPerm(k){ return IS_ADMIN || !!PERMS[k]; }
 
-      // ——— DOM refs
       const consoleEl = document.getElementById("console");
+      let consoleContentEl = document.getElementById('consoleContent');
+      if (!consoleContentEl) {
+        consoleContentEl = document.createElement('div');
+        consoleContentEl.id = 'consoleContent';
+        consoleEl.appendChild(consoleContentEl);
+      }
+
       const scriptSelect = document.getElementById("scriptSelect");
       const cmdRow = document.getElementById("cmdRow");
       const cmdInput = document.getElementById("cmdInput");
@@ -869,16 +1013,46 @@
       const dockNew = document.getElementById("dockNew");
       const dockStore = document.getElementById("dockStore");
 
-      // ——— server-info cache
+      const mrPluginModal = document.getElementById("mrPluginModal");
+      const mrPluginModalClose = document.getElementById("mrPluginModalClose");
+      const mrPluginName = document.getElementById("mrPluginName");
+      const mrPlatformGrid = document.getElementById("mrPlatformGrid"); // kept for compatibility (unused in new UI)
+      const mrVersionGrid = document.getElementById("mrVersionGrid");   // kept for compatibility (unused in new UI)
+      const mrPluginInstallBtn = document.getElementById("mrPluginInstallBtn");
+
+      let currentEditorPath = "";
+
       let serverInfo = null;
       let SERVER_NODE_ID = null;
 
-      // Store UI state
       let currentStoreTab = 'versions';
       let storeProvidersCache = null;
       let storeCurrentProvider = null;
 
-      // ===== Perms fetch + UI application =====
+      let papermcVersionsCache = null;
+
+      const JUMP_THRESHOLD = 8;
+
+      // Modrinth plugins state
+      const MR_VALID_LOADERS = ["paper","spigot","bukkit","purpur"];
+      let mrPluginsState = {
+        offset: 0,
+        limit: 24,
+        query: "",
+        loading: false,
+        more: true
+      };
+      let mrAllProjectVersions = [];
+      let mrCurrentProjectId = null;
+      let mrSelectedPlatform = null;
+      let mrSelectedMcVersion = null;
+
+      window.addEventListener('load', () => {
+        ensureJumpBtn();
+        updateJumpBtnVisibility();
+      });
+      window.addEventListener('resize', updateJumpBtnVisibility);
+
       async function fetchPerms(){
         try{
           const r = await fetch(`/api/servers/${encodeURIComponent(bot)}/permissions`);
@@ -886,15 +1060,116 @@
           const j = await r.json();
           IS_ADMIN = !!j.isAdmin;
           if (j && j.perms && typeof j.perms === 'object') PERMS = Object.assign(PERMS, j.perms);
-} catch(e){
-  // PUBLIC PANEL fallback: allow-all
-  IS_ADMIN = true;
-  PERMS = {
-    files_read:true, files_delete:true, files_rename:true, console_write:true,
-    server_stop:true, server_start:true, files_upload:true, files_create:true
-  };
-}
+        } catch(e){
+          IS_ADMIN = true;
+          PERMS = {
+            files_read:true, files_delete:true, files_rename:true, console_write:true,
+            server_stop:true, server_start:true, files_upload:true, files_create:true
+          };
+        }
       }
+
+      function clientClean(raw) {
+        if (!raw) return "";
+        let s = String(raw);
+        s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        s = s.replace(/\u001b\[[0-9;]*m/g, "");
+
+        s = s.replace(/^\s*(?:stdout|stderr)\s*:\s*/gmi, "");
+
+        const out = [];
+        for (let line of s.split("\n")) {
+          line = line.replace(/\s+$/, "");
+          const t = line.trim();
+          if (!t) continue;
+          if (t.includes("Usage:  docker")) continue;
+          if (t.includes("Run 'docker COMMAND --help'")) continue;
+          if (t.includes("For more help on how to use Docker")) continue;
+          if (/^\s*Container started\s*$/i.test(t)) continue;
+          if (/^[0-9a-f]{64}(?:\s*Container started)?\s*$/i.test(t)) continue;
+          if (/^\s*\[?waiting\]?\s+/i.test(t)) continue;
+          if (/container\s+".*"\s+not\s+found\s+yet/i.test(t)) continue;
+          if (/Error response from daemon:\s*No such container/i.test(t)) continue;
+          if (/^\s*\[init\]\s/i.test(t)) continue;
+          if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z,?version=.*$/i.test(t)) continue;
+          out.push(line);
+        }
+        let joined = out.join("\n");
+        joined = joined
+          .replace(/([^\n])(?=20\d{2}-\d{2}-\d{2}T)/g, "$1\n")
+          .replace(/([^\n])(?=\[\d{2}:\d{2}:\d{2}\s(?:INFO|WARN|ERROR))/g, "$1\n")
+          .replace(/([^\n])(?=Starting org\.bukkit\.craftbukkit\.Main)/g, "$1\n")
+          .replace(/([^\n])(?=\*\*\* Warning)/g, "$1\n");
+        joined = joined.replace(/\n{2,}/g, "\n");
+        if (joined && !joined.endsWith("\n")) joined += "\n";
+        return joined;
+      }
+
+      let userPinnedBottom = true;
+      let suppressAutoScroll = false;
+
+      function isNearBottom(el) {
+        return (el.scrollHeight - el.scrollTop - el.clientHeight) < JUMP_THRESHOLD;
+      }
+      function canScroll(el){
+        return el && (el.scrollHeight - el.clientHeight) > 2;
+      }
+
+      let jumpBtn = null;
+      function ensureJumpBtn() {
+        if (jumpBtn) return jumpBtn;
+        try {
+          if (getComputedStyle(consoleEl).position === 'static') {
+            consoleEl.style.position = 'relative';
+          }
+        } catch {}
+        jumpBtn = document.createElement('button');
+        jumpBtn.type = 'button';
+        jumpBtn.className = 'jump-btn';
+        jumpBtn.setAttribute('aria-label', 'Jump to bottom');
+        jumpBtn.innerHTML = '<i class="fa-solid fa-arrow-down"></i>';
+        consoleEl.appendChild(jumpBtn);
+        jumpBtn.addEventListener('click', () => {
+          scrollConsoleToBottom(true);
+          suppressAutoScroll = false;
+          userPinnedBottom   = true;
+          jumpBtn.classList.remove('show');
+        });
+        updateJumpBtnVisibility();
+        return jumpBtn;
+      }
+      function updateJumpBtnVisibility(){
+        const btn = ensureJumpBtn();
+        const show = canScroll(consoleEl) && !isNearBottom(consoleEl);
+        btn.classList.toggle('show', show);
+      }
+      function scrollConsoleToBottom(smooth = true){
+        try{
+          if (smooth && typeof consoleEl.scrollTo === 'function') {
+            consoleEl.scrollTo({ top: consoleEl.scrollHeight, behavior: 'smooth' });
+          } else {
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+          }
+          requestAnimationFrame(() => { consoleEl.scrollTop = consoleEl.scrollHeight; });
+        }catch{}
+      }
+
+      function appendToConsole(rawChunk) {
+        const cleaned = clientClean(rawChunk);
+        if (!cleaned) return;
+        const wasNearBottom = isNearBottom(consoleEl);
+        consoleContentEl.textContent += cleaned;
+        if (!suppressAutoScroll && wasNearBottom) {
+          scrollConsoleToBottom(false);
+        }
+        updateJumpBtnVisibility();
+      }
+
+      consoleEl.addEventListener('scroll', () => {
+        userPinnedBottom = isNearBottom(consoleEl);
+        suppressAutoScroll = !userPinnedBottom;
+        updateJumpBtnVisibility();
+      });
 
       function applyPermissionsToUI(){
         if(!hasPerm('console_write')){ cmdRow.classList.add('hidden'); }
@@ -906,12 +1181,10 @@
         if(!hasPerm('server_start')){ taskBtn.classList.add('disabled'); dockTask.classList.add('disabled'); }
       }
 
-      // ===== Socket & output (local mode)
       socket.emit("join", bot);
-      socket.on("output", (data) => { consoleEl.textContent += data; consoleEl.scrollTop = consoleEl.scrollHeight; });
+      socket.on("output", (data) => appendToConsole(data));
       socket.on("fileData", (d) => { openEditorModal(d.path, d.content); });
 
-      // ===== Server info (via nodes.js dacă există)
       async function loadServerInfo() {
         const [topoRes, srvRes] = await Promise.allSettled([
           topoInfo().catch(() => null),
@@ -919,16 +1192,12 @@
             .then(r => (r.ok ? r.json() : null))
             .catch(() => null)
         ]);
-
         const topo = topoRes.status === 'fulfilled' ? topoRes.value : null;
         const srv  = srvRes.status === 'fulfilled'  ? srvRes.value  : null;
-
         REMOTE_MODE = !!(topo && topo.remote);
         NODE_ID     = (topo && topo.nodeId) || (srv && srv.nodeId) || null;
-
         const topoInfoObj = (topo && topo.info) ? topo.info : {};
         serverInfo = Object.assign({}, topoInfoObj, srv || {});
-
         updateStoreVisibility();
       }
 
@@ -969,7 +1238,6 @@
         return j;
       }
 
-      /* ===== Store visibility ===== */
       function normalizeTemplate(t){ return (t ?? '').toString().trim().toLowerCase(); }
       function updateStoreVisibility(){
         const btn  = document.getElementById('storeBtn');
@@ -977,7 +1245,7 @@
         const tabs = document.getElementById('storeTabs');
         if (!btn && !dock) return;
         const t = serverInfo ? normalizeTemplate(serverInfo.template) : null;
-        const shouldShow = !t || t === 'minecraft'; // dacă nu știm încă, îl lăsăm vizibil
+        const shouldShow = !t || t === 'minecraft';
         [btn, dock].forEach(el => { if (el) el.classList.toggle('hidden', !shouldShow); });
         if (tabs) tabs.classList.toggle('hidden', !shouldShow);
       }
@@ -988,25 +1256,21 @@
         if (storeTabPlugins) storeTabPlugins.classList.toggle('active', tab === 'plugins');
         if (storeSubtitle){
           if (tab === 'versions') storeSubtitle.textContent = 'Choose your core distribution and version.';
-          else storeSubtitle.textContent = 'Plugin management is coming soon.';
+          else storeSubtitle.textContent = 'Browse and install plugins from Modrinth.';
         }
       }
 
       document.addEventListener('DOMContentLoaded', () => {
-        updateStoreVisibility(); // la start (template necunoscut) -> vizibil
+        updateStoreVisibility();
       });
 
-      /* ===== Store: open modal + fetch providers ===== */
       async function openStoreModal() {
         if (!storeModal) return;
-
-        // Deschide modalul imediat (optimist)
         storeModal.classList.add('show');
         storeModal.style.display = 'flex';
         storeModal.setAttribute('aria-hidden', 'false');
         setActiveStoreTab('versions');
         storeContent.innerHTML = `<div class="store-loading">Loading providers...</div>`;
-
         try {
           const r = await fetch(`/api/servers/${encodeURIComponent(bot)}/versions`);
           if (!r.ok) {
@@ -1020,9 +1284,7 @@
             storeContent.innerHTML = `<div class="store-error">Failed to load providers (${r.status})</div>`;
             return;
           }
-
           const data = await r.json();
-          // Render providers
           await renderStoreProvidersView(Array.isArray(data.providers) ? data.providers : []);
         } catch (e) {
           storeContent.innerHTML = `<div class="store-error">Failed to load providers</div>`;
@@ -1037,6 +1299,640 @@
         storeCurrentProvider = null;
       }
 
+      function compareMcVersionsDesc(a, b){
+        const pa = String(a).split('.').map(x => parseInt(x, 10) || 0);
+        const pb = String(b).split('.').map(x => parseInt(x, 10) || 0);
+        const len = Math.max(pa.length, pb.length);
+        for (let i = 0; i < len; i++){
+          const va = typeof pa[i] === 'number' ? pa[i] : 0;
+          const vb = typeof pb[i] === 'number' ? pb[i] : 0;
+          if (va !== vb) return vb - va;
+        }
+        return 0;
+      }
+
+      async function fetchPapermcVersions(){
+        if (papermcVersionsCache) return papermcVersionsCache;
+        const base = 'https://api.papermc.io/v2/projects/paper';
+        let proj;
+        try{
+          const projRes = await fetch(base);
+          if (!projRes.ok) throw new Error('Failed to load Paper project');
+          proj = await projRes.json().catch(() => ({}));
+        } catch(e){
+          papermcVersionsCache = { versions: [] };
+          return papermcVersionsCache;
+        }
+        let versions = Array.isArray(proj.versions) ? proj.versions.slice() : [];
+        if (!versions.length){
+          papermcVersionsCache = { versions: [] };
+          return papermcVersionsCache;
+        }
+        versions.sort(compareMcVersionsDesc);
+        const results = [];
+        const concurrency = 8;
+        let idx = 0;
+        async function worker(){
+          while (idx < versions.length){
+            const i = idx++;
+            const ver = versions[i];
+            try{
+              const verRes = await fetch(`${base}/versions/${encodeURIComponent(ver)}`);
+              if (!verRes.ok) continue;
+              const verData = await verRes.json().catch(() => ({}));
+              const builds = Array.isArray(verData.builds) ? verData.builds : [];
+              if (!builds.length) continue;
+              const lastBuild = builds[builds.length - 1];
+              let buildMeta = null;
+              try{
+                const buildRes = await fetch(`${base}/versions/${encodeURIComponent(ver)}/builds/${lastBuild}`);
+                if (buildRes.ok){
+                  buildMeta = await buildRes.json().catch(() => null);
+                }
+              }catch(_){}
+              const jarName = `paper-${ver}-${lastBuild}.jar`;
+              const downloadUrl = `${base}/versions/${encodeURIComponent(ver)}/builds/${lastBuild}/downloads/${encodeURIComponent(jarName)}`;
+              const entry = {
+                id: String(ver),
+                name: String(ver),
+                label: `Paper ${ver}`,
+                mcVersion: String(ver),
+                releaseDate: (buildMeta && typeof buildMeta.time === 'string')
+                  ? buildMeta.time.split('T')[0]
+                  : '',
+                tags: [],
+                build: lastBuild,
+                downloadUrl
+              };
+              const tags = entry.tags;
+              const channel = buildMeta && typeof buildMeta.channel === 'string'
+                ? buildMeta.channel.toLowerCase()
+                : '';
+              if (channel){
+                if (channel === 'default' || channel === 'stable'){
+                  if (!tags.includes('stable')) tags.push('stable');
+                } else {
+                  if (!tags.includes('unstable')) tags.push('unstable');
+                  if (!tags.includes(channel)) tags.push(channel);
+                }
+              } else {
+                if (!tags.includes('stable')) tags.push('stable');
+              }
+              if (buildMeta && buildMeta.promoted){
+                if (!tags.includes('recommended')) tags.push('recommended');
+              }
+              results.push(entry);
+            }catch(e){}
+          }
+        }
+        const workers = [];
+        for (let i = 0; i < concurrency; i++){
+          workers.push(worker());
+        }
+        await Promise.all(workers);
+        results.sort((a, b) => compareMcVersionsDesc(a.mcVersion, b.mcVersion));
+        if (results.length){
+          const latestTags = results[0].tags || (results[0].tags = []);
+          if (!latestTags.includes('latest')) latestTags.push('latest');
+        }
+        papermcVersionsCache = { versions: results };
+        return papermcVersionsCache;
+      }
+
+      async function fetchVelocityVersions(){
+  const base = 'https://api.papermc.io/v2/projects/velocity';
+  let proj;
+  try{
+    const res = await fetch(base);
+    if (!res.ok) throw new Error('Failed to load Velocity project');
+    proj = await res.json().catch(() => ({}));
+  } catch(e){
+    return { versions: [] };
+  }
+
+  let versions = Array.isArray(proj.versions) ? proj.versions.slice() : [];
+  if (!versions.length) return { versions: [] };
+
+  // Velocity versiunile sunt semver (ex: 3.3.0); sortăm descendent
+  versions.sort(compareMcVersionsDesc);
+
+  const results = [];
+  const concurrency = 8;
+  let idx = 0;
+
+  async function worker(){
+    while (idx < versions.length){
+      const i = idx++;
+      const ver = versions[i];
+      try{
+        const verRes = await fetch(`${base}/versions/${encodeURIComponent(ver)}`);
+        if (!verRes.ok) continue;
+        const verData = await verRes.json().catch(() => ({}));
+        const builds = Array.isArray(verData.builds) ? verData.builds : [];
+        if (!builds.length) continue;
+
+        const lastBuild = builds[builds.length - 1];
+
+        // meta pentru build (luăm channel, time, downloads)
+        let buildMeta = null;
+        try{
+          const buildRes = await fetch(`${base}/versions/${encodeURIComponent(ver)}/builds/${lastBuild}`);
+          if (buildRes.ok){
+            buildMeta = await buildRes.json().catch(() => null);
+          }
+        }catch(_){}
+
+        // găsim numele .jar din "downloads"
+        let fileName = null;
+        if (buildMeta && buildMeta.downloads){
+          if (Array.isArray(buildMeta.downloads)){
+            const app = buildMeta.downloads.find(d => d && d.name && /\.jar$/i.test(d.name)) || buildMeta.downloads[0];
+            fileName = app && app.name;
+          } else if (buildMeta.downloads.application && buildMeta.downloads.application.name){
+            fileName = buildMeta.downloads.application.name;
+          }
+        }
+        if (!fileName) fileName = `velocity-${ver}-${lastBuild}.jar`;
+
+        const downloadUrl = `${base}/versions/${encodeURIComponent(ver)}/builds/${lastBuild}/downloads/${encodeURIComponent(fileName)}`;
+
+        const entry = {
+          id: String(ver),
+          name: String(ver),
+          label: `Velocity ${ver}`,
+          mcVersion: "", // e proxy, nu afișăm "MC ..."
+          releaseDate: (buildMeta && typeof buildMeta.time === 'string') ? buildMeta.time.split('T')[0] : '',
+          tags: [],
+          build: lastBuild,
+          downloadUrl
+        };
+
+        const tags = entry.tags;
+        const channel = buildMeta && typeof buildMeta.channel === 'string' ? buildMeta.channel.toLowerCase() : '';
+        if (channel){
+          if (channel === 'default' || channel === 'stable') {
+            if (!tags.includes('stable')) tags.push('stable');
+          } else {
+            if (!tags.includes('unstable')) tags.push('unstable');
+            if (!tags.includes(channel)) tags.push(channel);
+          }
+        } else {
+          if (!tags.includes('stable')) tags.push('stable');
+        }
+        if (buildMeta && buildMeta.promoted){ if (!tags.includes('recommended')) tags.push('recommended'); }
+
+        results.push(entry);
+      }catch(_){}
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < concurrency; i++) workers.push(worker());
+  await Promise.all(workers);
+
+  // sortăm descendent după versiune
+  results.sort((a, b) => compareMcVersionsDesc(a.name, b.name));
+  if (results.length){
+    const t = results[0].tags || (results[0].tags = []);
+    if (!t.includes('latest')) t.push('latest');
+  }
+  return { versions: results };
+}
+
+      async function fetchPurpurVersions(){
+        const base = 'https://api.purpurmc.org/v2/purpur';
+        let proj;
+        try {
+          const res = await fetch(base);
+          if (!res.ok) throw new Error('Failed to load Purpur project');
+          proj = await res.json().catch(() => ({}));
+        } catch(e){
+          return { versions: [] };
+        }
+        let versions = Array.isArray(proj.versions) ? proj.versions.slice() : [];
+        if (!versions.length) return { versions: [] };
+        versions.sort(compareMcVersionsDesc);
+        const results = [];
+        for (const ver of versions){
+          try {
+            const latestRes = await fetch(`${base}/${encodeURIComponent(ver)}/latest`);
+            if (!latestRes.ok) continue;
+            const latest = await latestRes.json().catch(() => ({}));
+            const build   = latest.build;
+            const time    = latest.timestamp || latest.time || '';
+            const date    = typeof time === 'string' ? time.split('T')[0] : '';
+            const downloadUrl = `${base}/${encodeURIComponent(ver)}/${encodeURIComponent(build)}/download`;
+            const entry = {
+              id: String(ver),
+              name: String(ver),
+              label: `Purpur ${ver}`,
+              mcVersion: String(ver),
+              releaseDate: date,
+              tags: ['stable'],
+              build,
+              downloadUrl
+            };
+            results.push(entry);
+          } catch(e){}
+        }
+        if (results.length){
+          const t = results[0].tags || (results[0].tags = []);
+          if (!t.includes('latest')) t.push('latest');
+        }
+        return { versions: results };
+      }
+async function fetchLeavesVersions(){
+  const base = 'https://api.github.com/repos/LeavesMC/Leaves/releases';
+  const pages = [1, 2, 3, 4, 5];           // exact cum ai cerut
+  const perPage = 990;
+  const headers = { 'Accept': 'application/vnd.github+json' };
+
+  // 1) Luăm toate paginile în paralel
+  const chunks = await Promise.all(pages.map(async (p) => {
+    try {
+      const res = await fetch(`${base}?per_page=${perPage}&page=${p}`, { headers });
+      if (!res.ok) return [];
+      const arr = await res.json();
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }));
+
+  // 2) Aplatizăm și sortăm descrescător după data publicării
+  const all = chunks.flat().filter(x => x && !x.draft && !x.prerelease);
+  all.sort((a, b) => {
+    const da = new Date(a.published_at || a.created_at || 0).getTime();
+    const db = new Date(b.published_at || b.created_at || 0).getTime();
+    return db - da;
+  });
+
+  // 3) Extragem o singură intrare per versiune MC (ex. "1.21.8")
+  const seen = new Set();
+  const out = [];
+
+  function extractMcVersionFromRelease(rel){
+    // întâi din tag_name (ex: "1.21.8-138-9331167" -> "1.21.8")
+    const t = String(rel.tag_name || rel.name || '');
+    let m = t.match(/(\d+\.\d+(?:\.\d+)?)/);
+    if (m) return m[1];
+
+    // fallback: din numele assetului (ex: "leaves-1.21.8.jar")
+    if (Array.isArray(rel.assets)) {
+      for (const a of rel.assets) {
+        const s = String(a.name || a.browser_download_url || '');
+        const mm = s.match(/(\d+\.\d+(?:\.\d+)?)/);
+        if (mm) return mm[1];
+      }
+    }
+    return null;
+  }
+
+  function pickJarAsset(rel){
+    if (!Array.isArray(rel.assets)) return { url: null, sha256: null };
+
+    // preferă exact patternul "leaves-<mc>.jar", altfel orice .jar
+    let pref = rel.assets.find(a => /\.jar$/i.test(a?.name || '') &&
+                                   /leaves-\d+\.\d+(?:\.\d+)?\.jar$/i.test(a?.name || ''));
+    if (!pref) pref = rel.assets.find(a => /\.jar$/i.test(a?.name || ''));
+
+    if (!pref) return { url: null, sha256: null };
+
+    let sha = null;
+    if (typeof pref.digest === 'string' && pref.digest.startsWith('sha256:')) {
+      sha = pref.digest.split(':')[1];
+    }
+    return { url: pref.browser_download_url || null, sha256: sha };
+  }
+
+  for (const rel of all) {
+    const mc = extractMcVersionFromRelease(rel);
+    if (!mc) continue;
+    if (seen.has(mc)) continue; // deja am luat cel mai nou pentru versiunea asta
+
+    const { url: downloadUrl, sha256 } = pickJarAsset(rel);
+    const releaseDate = String(rel.published_at || rel.created_at || '').split('T')[0] || '';
+
+    out.push({
+      id: mc,                          // id = versiunea MC (consistent cu restul)
+      name: mc,
+      label: `Leaves ${mc}`,
+      mcVersion: mc,
+      releaseDate,
+      tags: ['github'],
+      downloadUrl,
+      // câmpuri extra utile (nu afectează UI-ul tău dacă nu le folosești):
+      tag: rel.tag_name || '',
+      url: rel.html_url || '',
+      sha256: sha256 || null
+    });
+
+    seen.add(mc);
+  }
+
+  // 4) Sortăm listele finale descrescător după versiunea MC (folosește comparatorul tău existent)
+  out.sort((a, b) => compareMcVersionsDesc(a.mcVersion, b.mcVersion));
+
+  // marchează "latest" pe prima intrare
+  if (out.length) {
+    const t = out[0].tags || (out[0].tags = []);
+    if (!t.includes('latest')) t.push('latest');
+  }
+
+  return { versions: out };
+}
+
+async function fetchSpigotVersions() {
+  const BASE = "https://api.github.com/repos/BaldGang/spigot-build/releases?per_page=1";
+
+  // Comparator desc pentru versiunile MC (1.21.10 > 1.21.8 > 1.21.1 etc.)
+  function compareDesc(a, b) {
+    const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+    const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+      const va = pa[i] ?? 0, vb = pb[i] ?? 0;
+      if (va !== vb) return vb - va;
+    }
+    return 0;
+  }
+  const cmp = (typeof compareMcVersionsDesc === "function") ? compareMcVersionsDesc : compareDesc;
+
+  try {
+    const res = await fetch(BASE, {
+      headers: { "Accept": "application/vnd.github+json" }
+      // Dacă ai token GitHub pt. rate-limit mai mare:
+      // headers: { "Accept": "application/vnd.github+json", "Authorization": `Bearer ${GITHUB_TOKEN}` }
+    });
+    if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+    const releases = await res.json();
+    if (!Array.isArray(releases) || releases.length === 0) {
+      return { versions: [] };
+    }
+
+    const rel = releases[0]; // doar ultimul release
+    const assets = Array.isArray(rel.assets) ? rel.assets : [];
+
+    // Dedupe pe versiune; dacă apar dubluri, păstrăm asset-ul cu data cea mai recentă
+    const byVersion = new Map();
+
+    for (const a of assets) {
+      const name = a?.name ?? "";
+      const m = name.match(/^spigot-(\d+\.\d+(?:\.\d+)?).jar$/i);
+      if (!m || !a.browser_download_url) continue;
+
+      const ver = m[1];
+      const rawDate = a.updated_at || a.created_at || rel.published_at || rel.created_at || "";
+      const dateOnly = String(rawDate).split("T")[0] || "";
+
+      const candidate = {
+        version: ver,
+        url: a.browser_download_url,
+        date: dateOnly,
+        // pentru comparație internă folosim timestamp numeric
+        _ts: Date.parse(a.updated_at || a.created_at || rel.published_at || rel.created_at || 0) || 0
+      };
+
+      const existing = byVersion.get(ver);
+      if (!existing || candidate._ts > existing._ts) {
+        byVersion.set(ver, candidate);
+      }
+    }
+
+    if (byVersion.size === 0) {
+      return { versions: [] };
+    }
+
+    // În array, sortat desc
+    const candidates = Array.from(byVersion.values())
+      .sort((x, y) => cmp(x.version, y.version));
+
+    // Map în formatul tău
+    const out = candidates.map((c) => ({
+      id: c.version,
+      name: c.version,
+      label: `SpigotMC ${c.version}`,
+      mcVersion: c.version,
+      releaseDate: c.date,       // doar YYYY-MM-DD
+      tags: ["stable"],
+      build: null,
+      downloadUrl: c.url
+    }));
+
+    // marchează primul ca latest
+    out[0].tags = ["latest", "stable"];
+
+    return { versions: out };
+  } catch (e) {
+    console.error("fetchSpigotVersions failed:", e);
+    return { versions: [] };
+  }
+}
+      async function fetchFoliaVersions(){
+  const base = 'https://api.papermc.io/v2/projects/folia';
+
+  // 1) proiectul + lista de versiuni
+  let proj;
+  try{
+    const res = await fetch(base);
+    if (!res.ok) throw new Error('Failed to load Folia project');
+    proj = await res.json().catch(()=> ({}));
+  }catch(e){
+    return { versions: [] };
+  }
+
+  let versions = Array.isArray(proj.versions) ? proj.versions.slice() : [];
+  if (!versions.length) return { versions: [] };
+  versions.sort(compareMcVersionsDesc);
+
+  // 2) pentru fiecare versiune: ultimul build + meta (pt. data / channel / numele fișierului)
+  const out = [];
+  const concurrency = 8;
+  let idx = 0;
+
+  async function worker(){
+    while (idx < versions.length){
+      const i = idx++;
+      const ver = String(versions[i]);
+
+      try{
+        // a) lista de build-uri pt versiune
+        const verRes = await fetch(`${base}/versions/${encodeURIComponent(ver)}`);
+        if (!verRes.ok) continue;
+        const verData = await verRes.json().catch(()=> ({}));
+        const builds  = Array.isArray(verData.builds) ? verData.builds : [];
+        if (!builds.length) continue;
+
+        const lastBuild = builds[builds.length - 1];
+
+        // b) meta pentru buildul ales
+        let buildMeta = null;
+        try{
+          const bRes = await fetch(`${base}/versions/${encodeURIComponent(ver)}/builds/${lastBuild}`);
+          if (bRes.ok) buildMeta = await bRes.json().catch(()=> null);
+        }catch(_){}
+
+        // c) aflăm numele corect al JAR-ului din meta (fallback sigur dacă lipsește)
+        let jarName = null;
+        if (buildMeta && buildMeta.downloads) {
+          if (buildMeta.downloads.application && buildMeta.downloads.application.name) {
+            jarName = buildMeta.downloads.application.name;
+          } else if (Array.isArray(buildMeta.downloads)) {
+            const anyJar = buildMeta.downloads.find(d => d && d.name && /\.jar$/i.test(d.name));
+            if (anyJar) jarName = anyJar.name;
+          }
+        }
+        if (!jarName) jarName = `folia-${ver}-${lastBuild}.jar`;
+
+        const downloadUrl = `${base}/versions/${encodeURIComponent(ver)}/builds/${lastBuild}/downloads/${encodeURIComponent(jarName)}`;
+
+        // d) obiectul de listă pt UI
+        const date = (buildMeta && typeof buildMeta.time === 'string') ? buildMeta.time.split('T')[0] : '';
+        const entry = {
+          id: ver,
+          name: ver,
+          label: `Folia ${ver}`,
+          mcVersion: ver,
+          releaseDate: date,
+          tags: [],
+          build: lastBuild,
+          downloadUrl
+        };
+
+        // e) tag-uri (stable/unstable/recommended/latest)
+        const channel = buildMeta && typeof buildMeta.channel === 'string'
+          ? buildMeta.channel.toLowerCase()
+          : '';
+        if (channel){
+          if (channel === 'default' || channel === 'stable') entry.tags.push('stable');
+          else entry.tags.push('unstable', channel);
+        } else {
+          entry.tags.push('stable');
+        }
+        if (buildMeta && buildMeta.promoted) entry.tags.push('recommended');
+
+        out.push(entry);
+      }catch(_){}
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < concurrency; i++) workers.push(worker());
+  await Promise.all(workers);
+
+  // sort desc; marchează primul ca latest
+  out.sort((a,b) => compareMcVersionsDesc(a.mcVersion || a.name, b.mcVersion || b.name));
+  if (out.length){
+    const t = out[0].tags || (out[0].tags = []);
+    if (!t.includes('latest')) t.push('latest');
+  }
+
+  return { versions: out };
+}
+
+      async function fetchWaterfallVersions(){
+  const base = 'https://api.papermc.io/v2/projects/waterfall';
+
+  // 1) proiectul + lista de versiuni (ex: 1.20.4, 1.20.1 etc.)
+  let proj;
+  try{
+    const res = await fetch(base);
+    if (!res.ok) throw new Error('Failed to load Waterfall project');
+    proj = await res.json().catch(()=> ({}));
+  }catch(e){
+    return { versions: [] };
+  }
+
+  let versions = Array.isArray(proj.versions) ? proj.versions.slice() : [];
+  if (!versions.length) return { versions: [] };
+  versions.sort(compareMcVersionsDesc);
+
+  // 2) pentru fiecare versiune: ia ultimul build + meta (pentru data / channel / nume fișier corect)
+  const out = [];
+  const concurrency = 8;
+  let idx = 0;
+
+  async function worker(){
+    while (idx < versions.length){
+      const i = idx++;
+      const ver = String(versions[i]);
+
+      try{
+        // a) lista de build-uri pt versiunea curentă
+        const verRes = await fetch(`${base}/versions/${encodeURIComponent(ver)}`);
+        if (!verRes.ok) continue;
+        const verData = await verRes.json().catch(()=> ({}));
+        const builds  = Array.isArray(verData.builds) ? verData.builds : [];
+        if (!builds.length) continue;
+
+        const lastBuild = builds[builds.length - 1];
+
+        // b) meta pentru buildul ales
+        let buildMeta = null;
+        try{
+          const bRes = await fetch(`${base}/versions/${encodeURIComponent(ver)}/builds/${lastBuild}`);
+          if (bRes.ok) buildMeta = await bRes.json().catch(()=> null);
+        }catch(_){}
+
+        // c) află numele corect al JAR-ului
+        let jarName = null;
+        if (buildMeta && buildMeta.downloads) {
+          if (buildMeta.downloads.application && buildMeta.downloads.application.name) {
+            jarName = buildMeta.downloads.application.name;
+          } else if (Array.isArray(buildMeta.downloads)) {
+            const anyJar = buildMeta.downloads.find(d => d && d.name && /\.jar$/i.test(d.name));
+            if (anyJar) jarName = anyJar.name;
+          }
+        }
+        // fallback sigur (naming PaperMC). Waterfall folosește adesea "Waterfall-<ver>-<build>.jar"
+        if (!jarName) jarName = `Waterfall-${ver}-${lastBuild}.jar`;
+
+        const downloadUrl = `${base}/versions/${encodeURIComponent(ver)}/builds/${lastBuild}/downloads/${encodeURIComponent(jarName)}`;
+
+        // d) construim obiectul de listă
+        const date = (buildMeta && typeof buildMeta.time === 'string') ? buildMeta.time.split('T')[0] : '';
+        const entry = {
+          id: ver,
+          name: ver,
+          label: `Waterfall ${ver}`,
+          mcVersion: ver,           // pentru proxy punem versiunea MC aici ca să o vezi în UI
+          releaseDate: date,
+          tags: [],
+          build: lastBuild,
+          downloadUrl
+        };
+
+        // e) tag-uri (stable/unstable/recommended/latest)
+        const channel = buildMeta && typeof buildMeta.channel === 'string'
+          ? buildMeta.channel.toLowerCase()
+          : '';
+        if (channel){
+          if (channel === 'default' || channel === 'stable') entry.tags.push('stable');
+          else entry.tags.push('unstable', channel);
+        } else {
+          entry.tags.push('stable');
+        }
+        if (buildMeta && buildMeta.promoted) entry.tags.push('recommended');
+
+        out.push(entry);
+      }catch(_){}
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < concurrency; i++) workers.push(worker());
+  await Promise.all(workers);
+
+  // sort desc după versiune (dotted numbers)
+  out.sort((a,b) => compareMcVersionsDesc(a.mcVersion || a.name, b.mcVersion || b.name));
+  if (out.length){
+    const t = out[0].tags || (out[0].tags = []);
+    if (!t.includes('latest')) t.push('latest');
+  }
+
+  return { versions: out };
+}
+
       async function fetchStoreProviders(){
         const res = await fetch(`/api/servers/${encodeURIComponent(bot)}/versions`);
         if (!res.ok) throw new Error('Failed to load providers');
@@ -1045,11 +1941,22 @@
         return j;
       }
 
-      async function fetchStoreVersions(providerId){
-        const res = await fetch(`/api/servers/${encodeURIComponent(bot)}/versions/${encodeURIComponent(providerId)}`);
-        if (!res.ok) throw new Error('Failed to load provider versions');
-        return await res.json();
-      }
+async function fetchStoreVersions(providerId){
+  const pid = (providerId || '').toString().toLowerCase();
+
+  if (pid.includes('paper'))   return await fetchPapermcVersions();
+  if (pid.includes('purpur'))  return await fetchPurpurVersions();
+  if (pid.includes('velocity'))return await fetchVelocityVersions(); // <— ADĂUGAT
+  if (pid.includes('waterfall'))return await fetchWaterfallVersions();
+  if (pid.includes('folia'))  return await fetchFoliaVersions();
+  if (pid.includes('leaves'))  return await fetchLeavesVersions();
+  if (pid.includes('spigot'))  return await fetchSpigotVersions();
+
+  // fallback la backend custom (dacă ai alți provideri în versions.json)
+  const res = await fetch(`/api/servers/${encodeURIComponent(bot)}/versions/${encodeURIComponent(providerId)}`);
+  if (!res.ok) throw new Error('Failed to load provider versions');
+  return await res.json();
+}
 
       async function renderStoreProvidersView(providersFromServer = null){
         if (!storeContent) return;
@@ -1058,21 +1965,17 @@
         storeContent.innerHTML = '<div class="store-loading">Loading providers...</div>';
         try{
           const providers = providersFromServer || (await fetchStoreProviders(), storeProvidersCache);
-
           if (!providers || providers.length === 0){
             storeContent.innerHTML = '<div class="store-empty">No providers configured in versions.json.</div>';
             return;
           }
-
           const grid = document.createElement('div');
           grid.className = 'store-content-grid';
-
           providers.forEach(p => {
             const card = document.createElement('button');
             card.className = 'store-provider-card';
             card.type = 'button';
             card.addEventListener('click', ()=> openProviderDetails(p));
-
             const logoWrap = document.createElement('div');
             logoWrap.className = 'store-provider-logo';
             if (p.logo){
@@ -1086,7 +1989,6 @@
               span.textContent = (p.name || p.id || '?').slice(0,2).toUpperCase();
               logoWrap.appendChild(span);
             }
-
             const body = document.createElement('div');
             body.className = 'store-provider-body';
             const title = document.createElement('div');
@@ -1097,17 +1999,14 @@
             desc.textContent = p.description || '';
             body.appendChild(title);
             body.appendChild(desc);
-
             const chevron = document.createElement('div');
             chevron.className = 'store-provider-chevron';
             chevron.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
-
             card.appendChild(logoWrap);
             card.appendChild(body);
             card.appendChild(chevron);
             grid.appendChild(card);
           });
-
           storeContent.innerHTML = '';
           storeContent.appendChild(grid);
         } catch(err){
@@ -1115,38 +2014,33 @@
         }
       }
 
-      /* === APPLY VERSION (frontend -> backend) === */
-async function applyVersion(providerId, versionId, displayLabel){
-  if (!hasPerm('server_start') && !hasPerm('files_create')) { alert('Unauthorized'); return; }
-  const label = displayLabel || versionId;
-  if (!confirm(`Install "${label}" on "${bot}"?`)) return;
-
-  showProgressWheel(3, `Applying ${label}...`);
-  try{
-    const r = await fetch(`/api/servers/${encodeURIComponent(bot)}/versions/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ providerId, versionId })
-    });
-
-    let j = null;
-    try { j = await r.json(); } catch { j = null; }
-
-    console.log('[applyVersion] status=', r.status, 'json=', j);
-
-    if (!r.ok || !j || !j.ok) {
-      const msg = (j && (j.detail || j.error)) ? (j.detail || j.error) : `HTTP ${r.status}`;
-      throw new Error(msg);
-    }
-
-  } catch(e){
-    setProgress(0, 'Apply failed');
-    alert('Apply failed: ' + (e && e.message ? e.message : e));
-  } finally {
-    setTimeout(hideProgressWheel, 450);
-  }
-}
-window.applyVersion = applyVersion;
+      async function applyVersion(providerId, versionId, displayLabel, downloadUrl){
+        if (!hasPerm('server_start') && !hasPerm('files_create')) { alert('Unauthorized'); return; }
+        const label = displayLabel || versionId;
+        if (!confirm(`Install "${label}" on "${bot}"?`)) return;
+        showProgressWheel(3, `Applying ${label}...`);
+        try{
+          const payload = { providerId, versionId };
+          if (downloadUrl) payload.url = downloadUrl;
+          const r = await fetch(`/api/servers/${encodeURIComponent(bot)}/versions/apply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          let j = null;
+          try { j = await r.json(); } catch { j = null; }
+          if (!r.ok || !j || !j.ok) {
+            const msg = (j && (j.detail || j.error)) ? (j.detail || j.error) : `HTTP ${r.status}`;
+            throw new Error(msg);
+          }
+        } catch(e){
+          setProgress(0, 'Apply failed');
+          alert('Apply failed: ' + (e && e.message ? e.message : e));
+        } finally {
+          setTimeout(hideProgressWheel, 450);
+        }
+      }
+      window.applyVersion = applyVersion;
 
       async function openProviderDetails(provider){
         if (!storeContent) return;
@@ -1155,15 +2049,13 @@ window.applyVersion = applyVersion;
         try{
           const data = await fetchStoreVersions(provider.id || provider.provider || '');
           const versions = data.versions || [];
-
           const wrapper = document.createElement('div');
 
+          /* Header row with logo + text side by side */
           const header = document.createElement('div');
           header.className = 'store-provider-header';
-
           const left = document.createElement('div');
           left.className = 'store-provider-header-main';
-
           const logoWrap = document.createElement('div');
           logoWrap.className = 'store-provider-logo';
           if (provider.logo){
@@ -1178,7 +2070,6 @@ window.applyVersion = applyVersion;
             span.textContent = (provider.name || provider.id || '?').slice(0,2).toUpperCase();
             logoWrap.appendChild(span);
           }
-
           const text = document.createElement('div');
           const nameEl = document.createElement('div');
           nameEl.className = 'store-provider-header-name';
@@ -1188,24 +2079,20 @@ window.applyVersion = applyVersion;
           descEl.textContent = provider.description || data.description || '';
           text.appendChild(nameEl);
           text.appendChild(descEl);
-
           left.appendChild(logoWrap);
           left.appendChild(text);
-
           const backBtn = document.createElement('button');
           backBtn.type = 'button';
           backBtn.className = 'store-back-btn';
           backBtn.innerHTML = '<i class="fa-solid fa-arrow-left"></i> Back';
           backBtn.addEventListener('click', ()=> renderStoreProvidersView());
-
           header.appendChild(left);
           header.appendChild(backBtn);
-
           wrapper.appendChild(header);
 
           const note = document.createElement('div');
           note.className = 'store-note';
-          note.textContent = 'Click a version to install it (panel will download server.jar locally or instruct the node to wget it).';
+          note.textContent = 'NOTE: Click on a version to install it into the server (ONE-TAP)';
           wrapper.appendChild(note);
 
           if (!versions.length){
@@ -1219,48 +2106,41 @@ window.applyVersion = applyVersion;
             versions.forEach(v => {
               const row = document.createElement('div');
               row.className = 'store-version-row';
-
               const meta = document.createElement('div');
               meta.className = 'store-version-meta';
-
               const vn = document.createElement('div');
               vn.className = 'store-version-name';
               vn.textContent = v.label || v.name || v.id;
-
               const vs = document.createElement('div');
               vs.className = 'store-version-sub';
               const parts = [];
               if (v.mcVersion) parts.push(`MC ${v.mcVersion}`);
               if (v.releaseDate) parts.push(v.releaseDate);
               vs.textContent = parts.join(' • ');
-
               meta.appendChild(vn);
               meta.appendChild(vs);
-
               const tags = document.createElement('div');
               tags.className = 'store-version-tags';
               (v.tags || []).forEach(tag => {
+                if (!tag) return;
+                const t = String(tag).toLowerCase();
                 const pill = document.createElement('span');
-                pill.className = 'pill ' + (tag === 'latest' || tag === 'recommended' ? 'pill-green' : 'pill-muted');
-                pill.textContent = tag;
+                pill.className = 'pill ' + (t === 'latest' || t === 'recommended' ? 'pill-green' : 'pill-muted');
+                pill.textContent = t.toUpperCase();
                 tags.appendChild(pill);
               });
-
               row.appendChild(meta);
               row.appendChild(tags);
-
-              // CLICK = APPLY
               row.addEventListener('click', () => {
                 const id = v.id || v.name || v.version || '';
                 const label = v.label || v.name || id;
-                applyVersion(provider.id || provider.provider || '', id, label);
+                const downloadUrl = v.downloadUrl || v.url || null;
+                applyVersion(provider.id || provider.provider || '', id, label, downloadUrl);
               });
-
               list.appendChild(row);
             });
             wrapper.appendChild(list);
           }
-
           storeContent.innerHTML = '';
           storeContent.appendChild(wrapper);
         } catch(err){
@@ -1271,8 +2151,266 @@ window.applyVersion = applyVersion;
       function renderPluginsPlaceholder(){
         if (!storeContent) return;
         setActiveStoreTab('plugins');
-        storeContent.innerHTML = '<div class="store-placeholder"><strong>Plugins</strong> management UI will live here. For now it is not wired to the backend.</div>';
+        storeContent.innerHTML = '<div class="store-placeholder"><strong>Plugins</strong> management UI will live here.</div>';
       }
+
+      // === Modrinth Plugins UI ===
+      function renderPluginsUI(){
+        if (!storeContent) return;
+        setActiveStoreTab('plugins');
+        storeContent.innerHTML = `
+          <div class="mr-plugins-root">
+            <div class="mr-plugins-header">
+              <input id="mrPluginSearch" type="text" placeholder="Search plugins on Modrinth..." />
+              <button id="mrPluginReload" class="store-tab"><i class="fa-solid fa-rotate"></i>&nbsp;Refresh</button>
+            </div>
+            <div id="mrPluginGrid" class="mr-plugin-grid"></div>
+            <button id="mrPluginLoadMore" class="store-tab" style="margin-top:10px;align-self:flex-start;"><i class="fa-solid fa-angles-down"></i>&nbsp;Load more</button>
+          </div>
+        `;
+        const searchInput = document.getElementById("mrPluginSearch");
+        const reloadBtn = document.getElementById("mrPluginReload");
+        const loadMoreBtn = document.getElementById("mrPluginLoadMore");
+        mrPluginsState.offset = 0;
+        mrPluginsState.more = true;
+        mrPluginsState.loading = false;
+        mrPluginsState.query = "";
+        let searchTimeout = null;
+        searchInput.addEventListener("input", () => {
+          const q = searchInput.value.trim();
+          if (searchTimeout) clearTimeout(searchTimeout);
+          searchTimeout = setTimeout(() => {
+            mrPluginsState.query = q;
+            loadModrinthPlugins(true);
+          }, 400);
+        });
+        reloadBtn.addEventListener("click", () => {
+          searchInput.value = "";
+          mrPluginsState.query = "";
+          loadModrinthPlugins(true);
+        });
+        loadMoreBtn.addEventListener("click", () => {
+          loadModrinthPlugins(false);
+        });
+        loadModrinthPlugins(true);
+      }
+
+      async function loadModrinthPlugins(reset){
+        const grid = document.getElementById("mrPluginGrid");
+        const loadMoreBtn = document.getElementById("mrPluginLoadMore");
+        if (!grid) return;
+        if (mrPluginsState.loading) return;
+        if (reset){
+          mrPluginsState.offset = 0;
+          mrPluginsState.more = true;
+          grid.innerHTML = '<div class="store-loading">Loading plugins from Modrinth...</div>';
+        } else if (!mrPluginsState.more){
+          return;
+        }
+        mrPluginsState.loading = true;
+        try{
+          const facets = encodeURIComponent('[["project_type:plugin"]]');
+          let url = `https://api.modrinth.com/v2/search?limit=${mrPluginsState.limit}&offset=${mrPluginsState.offset}&facets=${facets}`;
+          if (mrPluginsState.query) url += `&query=${encodeURIComponent(mrPluginsState.query)}`;
+          const res = await fetch(url);
+          if (!res.ok){
+            grid.innerHTML = `<div class="store-error">Failed to load plugins (${res.status})</div>`;
+            mrPluginsState.loading = false;
+            return;
+          }
+          const data = await res.json();
+          const hits = Array.isArray(data.hits) ? data.hits : [];
+          if (reset){
+            grid.innerHTML = "";
+          }
+          if (!hits.length){
+            if (mrPluginsState.offset === 0){
+              grid.innerHTML = '<div class="store-empty">No plugins found on Modrinth for this query.</div>';
+            }
+            mrPluginsState.more = false;
+            if (loadMoreBtn) loadMoreBtn.style.display = "none";
+          } else {
+            hits.forEach(renderModrinthCard);
+            mrPluginsState.offset += hits.length;
+            if (loadMoreBtn) loadMoreBtn.style.display = (hits.length < mrPluginsState.limit) ? "none" : "inline-flex";
+          }
+        } catch(e){
+          grid.innerHTML = `<div class="store-error">Failed to load plugins.</div>`;
+        } finally {
+          mrPluginsState.loading = false;
+        }
+      }
+
+      function renderModrinthCard(hit){
+        const grid = document.getElementById("mrPluginGrid");
+        if (!grid) return;
+        const card = document.createElement("div");
+        card.className = "mr-plugin-card";
+        const icon = hit.icon_url || "https://via.placeholder.com/200x140?text=No+Image";
+        const downloads = typeof hit.downloads === "number" ? hit.downloads : 0;
+        const downloadsText = downloads.toLocaleString();
+        card.innerHTML = `
+          <img src="${icon}" class="mr-plugin-icon" alt="">
+          <div class="mr-plugin-body">
+            <div class="mr-plugin-title">${hit.title}</div>
+            <div class="mr-plugin-desc">${(hit.description || "").slice(0, 90)}${(hit.description || "").length > 90 ? "..." : ""}</div>
+          </div>
+          <div class="mr-plugin-footer">
+            <span class="pill pill-muted"><i class="fa-solid fa-download"></i>&nbsp;${downloadsText}</span>
+            <button class="mr-plugin-install-btn">Install</button>
+          </div>
+        `;
+        card.querySelector(".mr-plugin-install-btn").addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openModrinthPluginModal(hit.project_id, hit.title);
+        });
+        card.addEventListener("click", () => openModrinthPluginModal(hit.project_id, hit.title));
+        grid.appendChild(card);
+      }
+
+      async function openModrinthPluginModal(projectId, name){
+        mrCurrentProjectId = projectId;
+        mrSelectedPlatform = null;
+        mrSelectedMcVersion = null;
+        mrPluginInstallBtn.disabled = true;
+        mrPluginName.textContent = name;
+
+        // Reset the new SELECT UI
+        const platformSelect = document.getElementById("mrPlatformSelect");
+        const versionSelect  = document.getElementById("mrVersionSelect");
+        platformSelect.innerHTML = `<option value="" selected disabled>Select a platform</option>`;
+        versionSelect.innerHTML  = `<option value="" selected disabled>Select a Minecraft version</option>`;
+
+        try{
+          const res = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}/version`);
+          if (!res.ok){
+            // if failed, keep selects disabled
+          } else {
+            mrAllProjectVersions = await res.json();
+            populateModrinthPlatforms(); // fill the platform select
+          }
+        } catch(e){
+          // swallow; UI remains
+        }
+        mrPluginModal.classList.add("show");
+        mrPluginModal.style.display = "flex";
+        mrPluginModal.setAttribute("aria-hidden","false");
+      }
+
+      function closeModrinthPluginModal(){
+        mrPluginModal.classList.remove("show");
+        mrPluginModal.style.display = "none";
+        mrPluginModal.setAttribute("aria-hidden","true");
+        mrCurrentProjectId = null;
+        mrAllProjectVersions = [];
+        mrSelectedPlatform = null;
+        mrSelectedMcVersion = null;
+        // Reset selects
+        const platformSelect = document.getElementById("mrPlatformSelect");
+        const versionSelect  = document.getElementById("mrVersionSelect");
+        if (platformSelect) platformSelect.innerHTML = `<option value="" selected disabled>Select a platform</option>`;
+        if (versionSelect)  versionSelect.innerHTML  = `<option value="" selected disabled>Select a Minecraft version</option>`;
+        mrPluginInstallBtn.disabled = true;
+      }
+
+      mrPluginModalClose.addEventListener("click", closeModrinthPluginModal);
+      mrPluginModal.addEventListener("click", (e) => {
+        if (e.target === mrPluginModal) closeModrinthPluginModal();
+      });
+
+      /* Reworked: use SELECTOR controls instead of clickable boxes */
+      function populateModrinthPlatforms(){
+        const platformSelect = document.getElementById("mrPlatformSelect");
+        const versionSelect  = document.getElementById("mrVersionSelect");
+        if (!platformSelect || !versionSelect) return;
+
+        // Build loader set
+        const loaderSet = new Set();
+        (mrAllProjectVersions || []).forEach(v => {
+          (v.loaders || []).forEach(l => {
+            if (MR_VALID_LOADERS.includes(l)) loaderSet.add(l);
+          });
+        });
+
+        platformSelect.innerHTML = `<option value="" selected disabled>Select a platform</option>`;
+        versionSelect.innerHTML  = `<option value="" selected disabled>Select a Minecraft version</option>`;
+        mrSelectedPlatform = null;
+        mrSelectedMcVersion = null;
+        mrPluginInstallBtn.disabled = true;
+
+        if (!loaderSet.size){
+          // No valid loaders: leave select with only placeholder
+          return;
+        }
+        Array.from(loaderSet).sort().forEach(loader => {
+          const opt = document.createElement('option');
+          opt.value = loader;
+          opt.textContent = loader.toUpperCase();
+          platformSelect.appendChild(opt);
+        });
+
+        platformSelect.onchange = () => {
+          mrSelectedPlatform = platformSelect.value || null;
+          mrSelectedMcVersion = null;
+          mrPluginInstallBtn.disabled = true;
+          populateModrinthVersions(); // fill versions for selected platform
+        };
+        versionSelect.onchange = () => {
+          mrSelectedMcVersion = versionSelect.value || null;
+          mrPluginInstallBtn.disabled = !(mrSelectedPlatform && mrSelectedMcVersion);
+        };
+      }
+
+      function populateModrinthVersions(){
+        const versionSelect  = document.getElementById("mrVersionSelect");
+        if (!versionSelect) return;
+
+        versionSelect.innerHTML = `<option value="" selected disabled>Select a Minecraft version</option>`;
+
+        const versionsSet = new Set();
+        (mrAllProjectVersions || []).forEach(v => {
+          if (!v.loaders || !v.game_versions) return;
+          if (!v.loaders.includes(mrSelectedPlatform)) return;
+          v.game_versions.forEach(gv => {
+            const match = String(gv).match(/^(\d+\.\d+(\.\d+)?)$/);
+            if (match) versionsSet.add(match[1]);
+          });
+        });
+        const list = Array.from(versionsSet).sort(compareMcVersionsDesc);
+        list.forEach(ver => {
+          const opt = document.createElement('option');
+          opt.value = ver;
+          opt.textContent = ver;
+          versionSelect.appendChild(opt);
+        });
+      }
+
+      mrPluginInstallBtn.addEventListener("click", async () => {
+        if (!mrCurrentProjectId || !mrSelectedPlatform || !mrSelectedMcVersion) return;
+        const match = (mrAllProjectVersions || []).find(v =>
+          v.loaders && v.game_versions &&
+          v.loaders.includes(mrSelectedPlatform) &&
+          v.game_versions.includes(mrSelectedMcVersion)
+        );
+        if (!match){
+          alert("No matching Modrinth version found for this platform / Minecraft version.");
+          return;
+        }
+        const files = match.files || [];
+        const file = files.find(f => f.primary) || files[0];
+        if (!file || !file.url){
+          alert("This Modrinth version does not expose a downloadable file.");
+          return;
+        }
+        const label = `${mrPluginName.textContent} (${mrSelectedPlatform.toUpperCase()} ${mrSelectedMcVersion})`;
+        try{
+          await applyVersion("modrinth-plugin", match.id || `${mrCurrentProjectId}-${mrSelectedPlatform}-${mrSelectedMcVersion}`, label, file.url);
+          alert("Plugin successfullly");
+          closeModrinthPluginModal();
+        } catch(e){
+          alert("Failed to trigger plugin install: " + (e && e.message ? e.message : e));
+        }
+      });
 
       async function openInfoModal(){
         if (!serverInfo) await loadServerInfo();
@@ -1296,7 +2434,7 @@ window.applyVersion = applyVersion;
         renderStoreProvidersView();
       });
       if (storeTabPlugins) storeTabPlugins.addEventListener('click', ()=> {
-        renderPluginsPlaceholder();
+        renderPluginsUI();
       });
 
       function focusConsole(){ openInfoModal(); }
@@ -1320,10 +2458,8 @@ window.applyVersion = applyVersion;
           currentPath = data.path || "";
           breadcrumbs.innerHTML = `<a href="#" onclick="loadExplorer('')">Root</a>${currentPath ? " / " + currentPath : ""}`;
           entriesEl.innerHTML = "";
-
           data.entries.forEach((e) => {
             const li = document.createElement("li"); li.className = "entry";
-
             const left = document.createElement("div");
             const icon = document.createElement("div"); icon.innerHTML = e.isDir ? '<i class="fa-solid fa-folder"></i>' : '<i class="fa-solid fa-file"></i>';
             const nameWrap = document.createElement("div");
@@ -1332,11 +2468,9 @@ window.applyVersion = applyVersion;
             nameWrap.appendChild(nm); nameWrap.appendChild(meta);
             left.style.display = 'flex'; left.style.gap='8px'; left.style.alignItems='center';
             left.appendChild(icon); left.appendChild(nameWrap);
-
             const actions = document.createElement("div"); actions.className = "entry-actions";
             const moreBtn = document.createElement("button"); moreBtn.className = "more-btn"; moreBtn.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
             const menu = document.createElement("div"); menu.className = "more-menu";
-
             if (hasPerm('files_rename')) {
               const renameBtn = document.createElement("button"); renameBtn.textContent = "Rename";
               renameBtn.addEventListener('click', async (ev) => {
@@ -1351,7 +2485,6 @@ window.applyVersion = applyVersion;
               });
               menu.appendChild(renameBtn);
             }
-
             if (hasPerm('files_delete')) {
               const deleteBtn = document.createElement("button"); deleteBtn.textContent = "Delete";
               deleteBtn.addEventListener('click', async (ev) => {
@@ -1366,7 +2499,6 @@ window.applyVersion = applyVersion;
               });
               menu.appendChild(deleteBtn);
             }
-
             const isArchive = !e.isDir && /\.(zip|tar|tgz|tar\.gz|tar\.bz2|bz2|rar|7z)$/i.test(e.name);
             if (isArchive && hasPerm('files_create')) {
               const unarchiveBtn = document.createElement("button"); unarchiveBtn.textContent = "Unarchive";
@@ -1384,14 +2516,12 @@ window.applyVersion = applyVersion;
               });
               menu.appendChild(unarchiveBtn);
             }
-
             actions.appendChild(moreBtn); actions.appendChild(menu);
             moreBtn.addEventListener('click', (ev) => {
               ev.stopPropagation();
               document.querySelectorAll('.more-menu.show').forEach(m=> { if (m !== menu) m.classList.remove('show'); });
               menu.classList.toggle('show');
             });
-
             li.addEventListener('click', async () => {
               if (e.isDir) {
                 loadExplorer(currentPath ? currentPath + "/" + e.name : e.name);
@@ -1407,10 +2537,8 @@ window.applyVersion = applyVersion;
                 }
               }
             });
-
             li.appendChild(left); li.appendChild(actions); entriesEl.appendChild(li);
           });
-
           const scripts = data.entries.filter(e => !e.isDir).map(e => e.name);
           scriptSelect.innerHTML = scripts.map(s => `<option value="${s}">${s}</option>`).join("");
           taskStartupSelect.innerHTML = `<option value="">(none)</option>` + scripts.map(s => `<option value="${s}">${s}</option>`).join("");
@@ -1420,7 +2548,6 @@ window.applyVersion = applyVersion;
         }
       }
 
-      // ===== Progress utils
       let currentProgress=0, simInterval=null, isActiveOperation=false, operationStart=null;
       function showProgressWheel(initial=0,msg="Processing..."){ isActiveOperation=true; operationStart=Date.now(); progressWheel.classList.remove('hidden'); setProgress(initial,msg); }
       function hideProgressWheel(){ isActiveOperation=false; setTimeout(()=>{ progressWheel.classList.add('hidden'); setProgress(0); closeProgressPopup(); operationStart=null; popupTime.textContent="—"; },300); }
@@ -1471,17 +2598,40 @@ window.applyVersion = applyVersion;
       }
 
       function openEditorModal(path, content){
+        currentEditorPath = path;
         editorModal.classList.add('show'); editorModal.style.display='flex'; document.getElementById('editorPath').textContent=path;
         const lower=path.toLowerCase();
-        if(lower.endsWith('.js')){ textArea.style.display='none'; codeArea.style.display='block'; codeArea.innerHTML=highlightJS(content); codeArea.dataset.raw=content; placeCaretAtEnd(codeArea); codeArea.focus(); }
-        else { codeArea.style.display='none'; textArea.style.display='block'; textArea.value=content; textArea.dataset.original=content; textArea.focus(); }
+        if(
+          lower.endsWith('.js') ||
+          lower.endsWith('.ts') ||
+          lower.endsWith('.json') ||
+          lower.endsWith('.yml') ||
+          lower.endsWith('.yaml') ||
+          lower.endsWith('.html') ||
+          lower.endsWith('.htm') ||
+          lower.endsWith('.css')
+        ){
+          textArea.style.display='none';
+          codeArea.style.display='block';
+          codeArea.innerHTML=highlightCode(content, path);
+          codeArea.dataset.raw=content;
+          placeCaretAtEnd(codeArea);
+          codeArea.focus();
+        }
+        else {
+          codeArea.style.display='none';
+          textArea.style.display='block';
+          textArea.value=content;
+          textArea.dataset.original=content;
+          textArea.focus();
+        }
         if(!hasPerm('files_create')){ editorSave.classList.add('disabled'); }
       }
-      function closeEditorModal(){ editorModal.classList.remove('show'); editorModal.style.display='none'; document.getElementById('editorPath').textContent=''; codeArea.innerHTML=''; textArea.value=''; }
+      function closeEditorModal(){ editorModal.classList.remove('show'); editorModal.style.display='none'; document.getElementById('editorPath').textContent=''; codeArea.innerHTML=''; textArea.value=''; currentEditorPath=""; }
       editorModalClose.addEventListener('click', closeEditorModal);
       editorDiscard.addEventListener('click', () => {
         if (textArea.style.display!=='none') textArea.value = textArea.dataset.original || '';
-        else codeArea.innerHTML = highlightJS(codeArea.dataset.raw || '');
+        else codeArea.innerHTML = highlightCode(codeArea.dataset.raw || '', currentEditorPath);
       });
       editorSave.addEventListener('click', async () => {
         if (!hasPerm('files_create')) return alert('Unauthorized');
@@ -1495,24 +2645,27 @@ window.applyVersion = applyVersion;
 
       function run(){
         if (!hasPerm('server_start')) return alert('Unauthorized');
-        consoleEl.textContent=''; const savedStartup=localStorage.getItem(`startup-${bot}`)||''; const fallback=(serverInfo&&serverInfo.start)?String(serverInfo.start):''; const selected=savedStartup||scriptSelect.value||fallback;
+        consoleContentEl.textContent='';
+        const savedStartup=localStorage.getItem(`startup-${bot}`)||'';
+        const fallback=(serverInfo&&serverInfo.start)?String(serverInfo.start):'';
+        const selected=savedStartup||scriptSelect.value||fallback;
         if(!selected) return alert('No script selected to run');
         statusLabel.textContent='running'; const lower=selected.toLowerCase();
         if(lower.endsWith('.jar')){
           const overrides={ ports:['25565:25565'], env:{EULA:'TRUE',TYPE:'CUSTOM',CUSTOM_SERVER:`/data/${selected}`}, volumes:['{BOT_DIR}:/data'], restart:'unless-stopped' };
           apiAction({ bot, cmd:'run', templateId:'minecraft', docker: overrides }).catch(err=>alert('Run failed: ' + (err.message||err)));
-          attachLogStreamIfRemote(); // [SSE]
+          attachLogStreamIfRemote();
           return;
         }
         apiAction({ bot, cmd:'run', file: selected }).catch(err=>alert('Run failed: ' + (err.message||err)));
-        attachLogStreamIfRemote(); // [SSE]
+        attachLogStreamIfRemote();
       }
       function stop(){
         if (!hasPerm('server_stop')) return alert('Unauthorized');
-        statusLabel.textContent='stopping';
+        statusLabel.textContent = 'stopping';
         apiAction({ bot, cmd:'stop' })
-          .then(()=> setTimeout(()=> statusLabel.textContent='idle', 500))
-          .catch(err=> alert('Stop failed: ' + (err.message||err)));
+          .then(() => setTimeout(() => statusLabel.textContent = 'idle', 500))
+          .catch(err => alert('Stop failed: ' + (err.message || err)));
       }
 
       fileUploadModal.addEventListener('change', () => {
@@ -1547,7 +2700,7 @@ window.applyVersion = applyVersion;
         cmdInput.value='';
       }
       cmdInput.addEventListener('keyup', (e)=>{ if(e.key==='Enter') sendCommand(); });
-      function clearConsole(){ consoleEl.textContent=''; }
+      function clearConsole(){ consoleContentEl.textContent=''; updateJumpBtnVisibility(); }
 
       function openFilesModal(){
         if (!hasPerm('files_read')) return alert('Unauthorized');
@@ -1574,6 +2727,7 @@ window.applyVersion = applyVersion;
           if (taskModal && taskModal.classList.contains('show')) { closeTaskModal(); return; }
           if (infoModal && infoModal.classList.contains('show')) { closeInfoModal(); return; }
           if (storeModal && storeModal.classList.contains('show')) { closeStoreModal(); return; }
+          if (mrPluginModal && mrPluginModal.classList.contains('show')) { closeModrinthPluginModal(); return; }
           if (progressPopup && progressPopup.style.display==='block') { closeProgressPopup(); return; }
         }
       });
@@ -1581,30 +2735,75 @@ window.applyVersion = applyVersion;
 
       document.addEventListener('DOMContentLoaded', async ()=>{
         await fetchPerms(); applyPermissionsToUI();
-        await loadServerInfo();              // setează REMOTE_MODE / template etc
-        attachLogStreamIfRemote();           // [SSE] — leagă fluxul de log dacă e remote
+        await loadServerInfo();
+        attachLogStreamIfRemote();
         await loadExplorer();
-        function applyScale(){ const dpr=window.devicePixelRatio||1; const scale=Math.max(0.75,Math.min(1.12,dpr)); document.documentElement.style.setProperty('--ui-scale', scale); }
-        applyScale(); window.addEventListener('resize', applyScale);
       });
 
-      socket.on('output', ()=> { consoleEl.scrollTop = consoleEl.scrollHeight; });
-
-      // === Helpers (highlight)
-      function escapeHtmlRaw(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-      function highlightJS(src){
-        if(typeof src!=='string') src=''; let out=escapeHtmlRaw(src);
-        out=out.replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g,m=>`<span class="com">${m.replace(/</g,'&lt;')}</span>`);
-        out=out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)/g,m=>`<span class="str">${m.replace(/</g,'&lt;')}</span>`);
-        out=out.replace(/\b([0-9]+(?:\.[0-9]+)?)\b/g,`<span class="num">$1</span>`);
-        out=out.replace(/\bclass\s+([A-Za-z_$][\w$]*)/g,(_,n)=>`class <span class="cls">${n}</span>`);
-        out=out.replace(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g,(_,n)=>`function <span class="fn">${n}</span>(`);
-        out=out.replace(/([A-Za-z_$][\w$]*)\s*=\s*\(.*?\)\s*=>/g,m=>m.replace(/([A-Za-z_$][\w$]*)/,`<span class="fn">$1</span>`));
-        const keywords=['const','let','var','return','if','else','for','while','switch','case','break','continue','class','new','try','catch','finally','throw','await','async','import','from','export','extends','super','this','typeof','instanceof','in'];
-        const kwRegex=new RegExp('\\b('+keywords.join('|')+')\\b','g'); out=out.replace(kwRegex,`<span class="kw">$1</span>`);
-        out=out.replace(/\r\n|\r|\n/g,'<div>$&</div>'); out=out.replace(/<div>\n<\/div>/g,'<div></div>'); return out;
+      function escapeHtmlRaw(s){
+        return String(s)
+          .replace(/&/g,'&amp;')
+          .replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;');
       }
-      function getTextFromContentEditable(el){ let txt=el.innerText||el.textContent||''; txt=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n'); return txt; }
+
+      function detectLanguageFromPath(path){
+        const lower = (path || '').toLowerCase();
+        if (lower.endsWith('.yml') || lower.endsWith('.yaml')) return 'yaml';
+        if (lower.endsWith('.json')) return 'json';
+        if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+        if (lower.endsWith('.css')) return 'css';
+        if (lower.endsWith('.ts')) return 'ts';
+        if (lower.endsWith('.js')) return 'js';
+        return 'plain';
+      }
+
+      function highlightCode(src, path){
+        if(typeof src!=='string') src='';
+        const lang = detectLanguageFromPath(path);
+        let out = escapeHtmlRaw(src);
+        if (lang === 'yaml'){
+          out = out.replace(/(#.*)$/gm,'<span class="com">$1</span>');
+          out = out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*')/g,'<span class="str">$1</span>');
+        } else if (lang === 'json'){
+          out = out.replace(/"(\\.|[^"\\])*"/g,'<span class="str">$&</span>');
+          out = out.replace(/\b(true|false|null)\b/g,'<span class="kw">$1</span>');
+          out = out.replace(/\b(\d+(\.\d+)?)\b/g,'<span class="num">$1</span>');
+        } else if (lang === 'html'){
+          out = out.replace(/(<!--[\s\S]*?-->)/g,'<span class="com">$1</span>');
+          out = out.replace(/(&lt;\/?)([a-zA-Z0-9\-]+)([^&gt;]*?)(&gt;)/g,(m, open, tag, attrs, close)=>{
+            attrs = attrs.replace(/([a-zA-Z0-9\-:]+)=(".*?"|'.*?')/g,'<span class="attr">$1</span>=<span class="str">$2</span>');
+            return '<span class="tag">'+open+tag+attrs+close+'</span>';
+          });
+        } else if (lang === 'css'){
+          out = out.replace(/(\/\*[\s\S]*?\*\/)/g,'<span class="com">$1</span>');
+          out = out.replace(/([a-zA-Z\-]+)(?=\s*:)/g,'<span class="prop">$1</span>');
+          out = out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*')/g,'<span class="str">$1</span>');
+          out = out.replace(/\b(\d+(\.\d+)?)(px|rem|em|%)?\b/g,'<span class="num">$1$3</span>');
+        } else {
+          out=out.replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g,m=>`<span class="com">${m.replace(/</g,'&lt;')}</span>`);
+          out=out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)/g,m=>`<span class="str">${m.replace(/</g,'&lt;')}</span>`);
+          out=out.replace(/\b([0-9]+(?:\.[0-9]+)?)\b/g,`<span class="num">$1</span>`);
+          out=out.replace(/\bclass\s+([A-Za-z_$][\w$]*)/g,(_,n)=>`class <span class="cls">${n}</span>`);
+          out=out.replace(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g,(_,n)=>`function <span class="fn">${n}</span>(`);
+          out=out.replace(/([A-Za-z_$][\w$]*)\s*=\s*\(.*?\)\s*=>/g,m=>m.replace(/([A-Za-z_$][\w$]*)/,`<span class="fn">$1</span>`));
+          const keywords=['const','let','var','return','if','else','for','while','switch','case','break','continue','class','new','try','catch','finally','throw','await','async','import','from','export','extends','super','this','typeof','instanceof','in'];
+          const kwRegex=new RegExp('\\b('+keywords.join('|')+')\\b','g');
+          out=out.replace(kwRegex,`<span class="kw">$1</span>`);
+        }
+        const lines = out.split(/\r\n|\r|\n/);
+        return lines.map(line => `<div>${line || '&nbsp;'}</div>`).join('');
+      }
+
+      function highlightJS(src){
+        return highlightCode(src, currentEditorPath || '');
+      }
+
+      function getTextFromContentEditable(el){
+        let txt=el.innerText||el.textContent||'';
+        txt=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+        return txt;
+      }
       function placeCaretAtEnd(el){ el.focus(); if(window.getSelection&&document.createRange){ const r=document.createRange(); r.selectNodeContents(el); r.collapse(false); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);} }
       function startSimulatedProgress(from=0,to=90,duration=400){
         if(simInterval){ clearInterval(simInterval); simInterval=null; }
@@ -1612,6 +2811,68 @@ window.applyVersion = applyVersion;
         simInterval=setInterval(()=>{ pct=Math.min(99,pct+step); setProgress(Math.round(pct)); if(pct>=to){ clearInterval(simInterval); simInterval=null; } }, Math.max(40, Math.floor(duration/steps)));
       }
     </script>
+    <script>
+/* Ascunde .dock când orice .modal-overlay este vizibilă */
+(function () {
+  function setDockHidden(hidden) {
+    const dock = document.querySelector('.dock');
+    if (!dock) return;
+    dock.style.display = hidden ? 'none' : '';
+  }
+
+  function isAnyModalVisible() {
+    const overlays = document.querySelectorAll('.modal-overlay');
+    for (const el of overlays) {
+      // Considerăm vizibil dacă are .show SAU display != none
+      if (el.classList.contains('show')) return true;
+      const cs = getComputedStyle(el);
+      if (cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function updateDockVisibility() {
+    setDockHidden(isAnyModalVisible());
+  }
+
+  // Observăm schimbări pe atributele modalelelor (class/style/aria-hidden)
+  const modalObserver = new MutationObserver(updateDockVisibility);
+  function attachModalObservers() {
+    document.querySelectorAll('.modal-overlay').forEach(el => {
+      modalObserver.observe(el, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'aria-hidden']
+      });
+    });
+  }
+
+  // Dacă se adaugă modale noi dinamic
+  const docObserver = new MutationObserver(muts => {
+    let shouldReattach = false;
+    for (const m of muts) {
+      if (m.type === 'childList' && (m.addedNodes.length || m.removedNodes.length)) {
+        shouldReattach = true;
+      }
+    }
+    if (shouldReattach) attachModalObservers();
+    updateDockVisibility();
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    attachModalObservers();
+    docObserver.observe(document.body, { childList: true, subtree: true });
+    updateDockVisibility();
+  });
+
+  // În caz că modalele sunt închise cu ESC sau prin JS, sincronizăm imediat după tick
+  document.addEventListener('keydown', () => setTimeout(updateDockVisibility, 0));
+
+  // Îl expunem ca să-l poți apela manual după open/close dacă vrei
+  window.updateDockVisibility = updateDockVisibility;
+})();
+</script>
 
     <script src="https://kit.fontawesome.com/6bcbc61285.js" crossorigin="anonymous"></script>
   </body>

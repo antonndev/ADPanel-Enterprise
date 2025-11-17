@@ -2,6 +2,7 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
+const fsp = require("fs/promises");
 const net = require("net");
 const dns = require("dns").promises;
 const AdmZip = require("adm-zip");
@@ -10,9 +11,13 @@ const session = require("express-session");
 const { spawn } = require("child_process");
 const FileStore = require("session-file-store")(session);
 const https = require("https");
+const _startedOnce = new Set();
 const nodesRouter = require("./nodes.js");
 const httpMod = require("http");
 const { URL } = require("url");
+const lineBuffers  = {};            // name -> string (buffer pentru linii neterminate)
+const logProcesses = {};            // name -> child process (docker logs -f)
+
 let bcrypt;
 try {
   bcrypt = require("bcrypt");
@@ -45,6 +50,7 @@ const NODE_AGENT_PORT = parseInt(process.env.NODE_AGENT_PORT || '8080', 10);
 const LOCAL_NODE_TOKEN = process.env.NODE_AGENT_TOKEN || process.env.NODE_TOKEN || null;
 const USER_ACCESS_FILE = path.join(__dirname, "user-access.json");
 const USERS_FILE = path.join(__dirname, "user.json");
+const remoteLogClients = {};
 const SECURITY_FILE = path.join(__dirname, "security.json");
 const SERVERS_FILE = path.join(__dirname, "servers.json"); // index cu start file
 const versionsPath = path.join(__dirname, 'versions.json');
@@ -86,6 +92,23 @@ try {
   });
 } catch (e) {
   console.warn("[rate-limiter] fs.watch failed or not available:", e && e.message);
+}
+
+const SERVERS_ROOT = BOTS_DIR;
+
+function botRoot(bot) {
+  return path.join(SERVERS_ROOT, bot); // acum e același lucru cu path.join(BOTS_DIR, bot)
+}
+function safeResolve(bot, rel = '') {
+  const base = botRoot(bot);
+  const abs = path.resolve(base, String(rel || '').replace(/^\/+/, ''));
+  if (!abs.startsWith(base)) throw new Error('Path escapes sandbox');
+  return abs;
+}
+async function readText(abs) {
+  const buf = await fsp.readFile(abs);
+  if (buf.slice(0, 8192).includes(0)) throw new Error('Binary file; not opening as text');
+  return buf.toString('utf8');
 }
 
 const rateRequests = new Map();
@@ -373,6 +396,8 @@ function syncUserAccessWithUsers() {
 }
 syncUserAccessWithUsers();
 
+const _lineBuf = {};
+
 function nodeAuthHeadersFor(node, isRemote) {
   const h = { 'Content-Type': 'application/json' };
   // nod remote: ia token din nodes.json
@@ -499,7 +524,18 @@ function execCollect(cmd, args, opts = {}) {
     p.on("error", reject);
   });
 }
-function docker(args, opts = {}) { return run("docker", args, opts); }
+function callDocker(args, opts = {}, onEmptyMsg = "[ADPanel] internal: empty docker args", room = null) {
+  if (!Array.isArray(args) || args.length === 0) {
+    if (room) _emitLine(room, onEmptyMsg);
+    return null;
+  }
+  return docker(args, opts);
+}
+
+function docker(args, opts = {}) {
+  if (!Array.isArray(args) || args.length === 0) return null; // safety
+  return spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"], ...opts });
+}
 function dockerCollect(args, opts = {}) { return execCollect("docker", args, opts); }
 async function containerExists(name) { try { await dockerCollect(["inspect", name]); return true; } catch { return false; } }
 async function ensureNoContainer(name) { try { await dockerCollect(["rm", "-f", name]); } catch {} }
@@ -671,7 +707,7 @@ const DOCKER_TEMPLATES = [
     docker: {
       image: "itzg/minecraft-server",
       tag: "latest",
-      ports: ["25565:25565"],
+      ports: [],
       env: {
         EULA: "TRUE",
         MEMORY: "2G",
@@ -797,18 +833,46 @@ app.post('/api/servers/:name/apply-version', async (req, res) => {
       return res.status(400).json({ error: 'not-minecraft-template' });
     }
 
-    // === găsim URL-ul din versions.json (ai deja helperul findVersionUrl din mesajul anterior)
+    // === găsim URL-ul din versions.json
     const url = findVersionUrl(providerId, versionId);
     if (!url) return res.status(400).json({ error: 'version-url-not-found' });
 
-    // === unde trimitem? dacă are nodeId/ip -> către agentul de nod, altfel local agent
+    console.log('[minecraft/apply] entry =', {
+      name: entry.name,
+      nodeId: entry.nodeId,
+      ip: entry.ip,
+    });
+
+    // === dacă nodeId este null/falsy => LOCAL NODE -> descarcă în bots/<serverName> și gata
+    if (!entry.nodeId) {
+      try {
+        console.log('[minecraft/apply] nodeId is null -> treating as local node, downloading to bots folder');
+        const destPath = await downloadVersionToLocalBotsFolder(serverName, url);
+        console.log('[minecraft/apply] local download ok:', destPath);
+        return res.json({ ok: true, local: true, path: destPath });
+      } catch (err) {
+        console.error('[minecraft/apply] local download failed', err);
+        return res.status(500).json({
+          error: 'local-download-failed',
+          detail: err && err.message ? err.message : String(err),
+        });
+      }
+    }
+
+    // === dacă avem nodeId -> comportamentul vechi (forward la node agent)
     const NODE_AGENT_PORT = process.env.NODE_AGENT_PORT || 8080;
     const baseUrl = (entry && entry.nodeId && entry.ip)
       ? `http://${entry.ip}:${NODE_AGENT_PORT}`
       : `http://127.0.0.1:${NODE_AGENT_PORT}`;
 
+    const forwardUrl = `${baseUrl}/v1/servers/${encodeURIComponent(serverName)}/apply-version`;
+    console.log('[minecraft/apply] forward -> node', {
+      forwardUrl,
+      nodeId: entry.nodeId,
+    });
+
     const remote = await httpRequestJson(
-      `${baseUrl}/v1/servers/${encodeURIComponent(serverName)}/apply-version`,
+      forwardUrl,
       'POST',
       { 'Content-Type': 'application/json' },   // FĂRĂ auth headers
       { providerId, versionId, url },
@@ -817,48 +881,90 @@ app.post('/api/servers/:name/apply-version', async (req, res) => {
 
     if (remote.status !== 200 || !(remote.json && remote.json.ok)) {
       const msg = (remote.json && (remote.json.error || remote.json.detail)) || `remote status ${remote.status}`;
-      console.warn('apply-version remote error:', { url: `${baseUrl}/v1/servers/${serverName}/apply-version`, status: remote.status, detail: msg });
+      console.warn('apply-version remote error:', {
+        url: forwardUrl,
+        status: remote.status,
+        detail: msg,
+      });
       return res.status(502).json({ error: 'server-error', detail: msg });
     }
 
     return res.json({ ok: true });
   } catch (e) {
     console.error('apply-version error', e);
-    return res.status(500).json({ error: 'server-error', detail: e && e.message ? e.message : String(e) });
+    return res.status(500).json({
+      error: 'server-error',
+      detail: e && e.message ? e.message : String(e),
+    });
   }
 });
 app.post('/api/servers/:bot/apply-version', async (req, res) => {
   const bot = String(req.params.bot || '').trim();
   const { providerId, versionId } = req.body || {};
-  if (!bot || !providerId || !versionId) return res.status(400).json({ error: 'missing-fields' });
+
+  if (!bot || !providerId || !versionId) {
+    return res.status(400).json({ error: 'missing-fields' });
+  }
 
   const url = findVersionUrl(providerId, versionId);
   if (!url) return res.status(400).json({ error: 'version-url-not-found' });
 
   const rec = getServerRecord(bot);
   if (!rec) return res.status(404).json({ error: 'server-not-found' });
-  if (!rec.nodeId) return res.status(400).json({ error: 'missing-nodeId-on-server' });
 
+  console.log('[apply] req', { bot, providerId, versionId, url });
+  console.log('[apply] rec', { nodeId: rec.nodeId, ip: rec.ip });
+
+  // === dacă nodeId este null/falsy => LOCAL NODE -> descarcă în bots/<bot> și gata
+  if (!rec.nodeId) {
+    try {
+      console.log('[apply] nodeId is null -> treating as local node, downloading to bots folder');
+      const destPath = await downloadVersionToLocalBotsFolder(bot, url);
+      console.log('[apply] local download ok:', destPath);
+      return res.json({ ok: true, local: true, path: destPath });
+    } catch (err) {
+      console.error('[apply] local download failed', err);
+      return res.status(500).json({
+        error: 'local-download-failed',
+        detail: err && err.message ? err.message : String(err),
+      });
+    }
+  }
+
+  // === dacă avem nodeId -> comportamentul pe nod (forward)
   const nodeBase = resolveNodeBase(rec);
   if (!nodeBase) return res.status(400).json({ error: 'node-base-unresolved' });
 
-  // body minimal: includem nodeId pentru verificare la nod
-  const body = { providerId, versionId, url, nodeId: rec.nodeId };
   const pathOnly = `/v1/servers/${encodeURIComponent(bot)}/apply-version`;
+  const forwardUrl = nodeBase + pathOnly;
+
+  console.log('[apply] forward -> node', {
+    forwardUrl,
+    nodeId: rec.nodeId,
+  });
+
+  const body = { providerId, versionId, url, nodeId: rec.nodeId };
 
   try {
-    const r = await fetch(nodeBase + pathOnly, {
+    const r = await fetch(forwardUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) {
-      return res.status(r.status || 500).json({ error: 'node-apply-failed', detail: j.error || j.detail || r.statusText });
+      return res.status(r.status || 500).json({
+        error: 'node-apply-failed',
+        detail: j.error || j.detail || r.statusText,
+      });
     }
     return res.json({ ok: true });
   } catch (e) {
-    return res.status(500).json({ error: 'panel-apply-error', detail: e && e.message });
+    console.error('[apply] panel-apply-error', e);
+    return res.status(500).json({
+      error: 'panel-apply-error',
+      detail: e && e.message ? e.message : String(e),
+    });
   }
 });
 app.post("/login", (req, res) => {
@@ -908,6 +1014,16 @@ function isOpenNodeRoute(req) {
   if (req.method === "POST" && req.path === "/api/nodes/auth") return true;
   return false;
 }
+
+function emitChunkLines(bot, chunk) {
+  const s = chunk.toString().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const parts = s.split("\n");
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i].trim() === "") continue;
+    _emitLine(bot, parts[i]);
+  }
+}
+
 app.use((req, res, next) => {
   if (
     req.path.startsWith("/login") ||
@@ -1195,67 +1311,151 @@ app.get("/api/settings/accounts", (req, res) => {
 
 // === PUBLIC: apply-version (panel -> node sau local)
 app.post('/api/servers/:bot/versions/apply', async (req, res) => {
-  if (!isAuthenticated(req)) return res.status(401).json({ ok:false, error:'not-authenticated' });
+  if (!isAuthenticated(req)) {
+    return res.status(401).json({ ok: false, error: 'not-authenticated' });
+  }
 
   try {
     const bot = String(req.params.bot || '').trim();
-    const { providerId, versionId } = req.body || {};
-    if (!bot || !providerId || !versionId) {
-      return res.status(400).json({ ok:false, error:'missing-params' });
+    const {
+      providerId,
+      versionId,
+      url: bodyUrl,
+      destPath: rawDestPath,   // poate veni din frontend, dar nu e obligatoriu
+    } = req.body || {};
+
+    if (!bot) {
+      return res.status(400).json({ ok: false, error: 'missing-bot' });
     }
 
-    // 1) găsește URL-ul de download din versions.json
-    const url = getVersionUrlFromConfig(providerId, versionId);
-    if (!url) return res.status(404).json({ ok:false, error:'version-url-not-found' });
-    if (!/^https?:\/\//i.test(url)) return res.status(400).json({ ok:false, error:'invalid-url' });
+    // 1) determinăm URL-ul final
+    let url = (bodyUrl && String(bodyUrl).trim()) || '';
 
-    console.log('[apply] req', { bot, providerId, versionId });
-
-    // 2) vezi dacă serverul e pe nod (servers.json)
-    const idx = loadServersIndex();
-    const entry = Array.isArray(idx) ? idx.find(e => e && e.name === bot) : null;
-
-    if (entry) {
-      // Considerăm "remote" dacă există în servers.json
-      const nodeHost = entry.nodeHost || entry.ip || entry.host;
-      const nodePort = Number(entry.nodePort || process.env.NODE_AGENT_PORT || 8080);
-      const nodeId   = entry.nodeId || entry.uuid || null;
-
-      if (!nodeHost) return res.status(400).json({ ok:false, error:'node-host-missing' });
-      if (!nodeId)   return res.status(400).json({ ok:false, error:'node-id-missing' });
-
-      const forwardUrl = `http://${nodeHost}:${nodePort}/v1/servers/${encodeURIComponent(bot)}/apply-version`;
-      console.log('[apply] forward -> node', { forwardUrl, nodeId });
-
-      // POST direct la agentul nodului: { url, nodeId }
-      const r = await fetch(forwardUrl, {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ url, nodeId })
-      });
-
-      let j = {};
-      try { j = await r.json(); } catch { j = {}; }
-
-      if (!r.ok || (j && j.error)) {
-        const msg = (j && (j.detail || j.error)) || `node-forward-failed-${r.status}`;
-        return res.status(502).json({ ok:false, error: msg });
+    if (!url) {
+      if (!providerId || !versionId) {
+        return res.status(400).json({ ok: false, error: 'missing-params' });
       }
 
-      return res.json({ ok:true, remote:true, msg:'forwarded-to-node' });
+      // fallback pentru provideri clasici (Paper, Purpur etc) care folosesc versions.json
+      url = getVersionUrlFromConfig(providerId, versionId);
+      if (!url) {
+        return res.status(404).json({ ok: false, error: 'version-url-not-found' });
+      }
     }
 
-    // 3) fallback LOCAL — descarcă în bots/<bot>/server.jar
+    if (!/^https?:\/\//i.test(url)) {
+      return res.status(400).json({ ok: false, error: 'invalid-url' });
+    }
+
+    // 2) decidem destinația relativă în folderul serverului
+    let destRel = '';
+
+    if (rawDestPath) {
+      // frontend-ul a specificat explicit
+      destRel = String(rawDestPath).trim();
+    } else if (providerId === 'modrinth-plugin') {
+      // automat: plugin Modrinth => plugins/<nume-jar-din-URL>
+      let filename = '';
+      try {
+        const u = new URL(url);
+        filename = require('path').basename(u.pathname);
+      } catch (e) {
+        // fallback dacă URL-ul e dubios
+      }
+
+      if (!filename || !filename.toLowerCase().endsWith('.jar')) {
+        filename = (versionId ? `${versionId}.jar` : 'plugin.jar');
+      }
+
+      destRel = require('path').join('plugins', filename);
+    } else {
+      // default vechi: versiune de server => server.jar în root
+      destRel = 'server.jar';
+    }
+
+    // sanitizare
+    destRel = destRel.replace(/^\/+/, '');
+    if (!destRel) destRel = 'server.jar';
+    if (destRel.includes('..') || destRel.includes('\\')) {
+      return res.status(400).json({ ok: false, error: 'invalid-destPath' });
+    }
+
+    console.log('[apply] req', {
+      bot,
+      providerId,
+      versionId,
+      url,
+      destRel
+    });
+
+    // 3) determinăm dacă serverul e pe nod sau local
+    const idx   = loadServersIndex(); // servers.json – array
+    const entry = Array.isArray(idx) ? idx.find(e => e && e.name === bot) : null;
+
+    const rawNodeId = entry && (entry.nodeId || entry.node || entry.id || entry.uuid || null);
+    const ip        = entry && (entry.ip || entry.host || null);
+
+    const isRemoteNode = !!(entry && rawNodeId && rawNodeId !== 'local' && ip);
+
+    if (isRemoteNode) {
+      // === PE NOD REMOTE ===
+      const forwardUrl = `http://${ip}:${NODE_AGENT_PORT}/v1/servers/${encodeURIComponent(bot)}/apply-version`;
+      console.log('[apply] forward -> node', { forwardUrl, nodeId: rawNodeId, destRel });
+
+      const payload = { url, nodeId: rawNodeId, destPath: destRel };
+
+      const r = await httpRequestJson(
+        forwardUrl,
+        'POST',
+        { 'Content-Type': 'application/json' },
+        payload,
+        60_000
+      );
+
+      if (r.status !== 200 || !(r.json && r.json.ok)) {
+        return res.status(502).json({
+          ok: false,
+          error:
+            (r.json && (r.json.detail || r.json.error)) ||
+            `node-forward-failed-${r.status}`
+        });
+      }
+
+      return res.json({ ok: true, remote: true, msg: 'forwarded-to-node', destPath: destRel });
+    }
+
+    // === LOCAL NODE ===
+    console.log('[apply] local node -> downloading into bots folder', {
+      bot,
+      url,
+      destRel,
+      hasEntry: !!entry,
+      nodeId: rawNodeId || null,
+      ip: ip || null
+    });
+
     const botDir = path.join(BOTS_DIR, bot);
-    try { fs.mkdirSync(botDir, { recursive: true }); } catch {}
-    const jarPath = path.join(botDir, 'server.jar');
+    try {
+      fs.mkdirSync(botDir, { recursive: true });
+    } catch {}
 
-    await downloadToFile(url, jarPath);
-    return res.json({ ok:true, remote:false, msg:'downloaded', path: jarPath });
+    const finalPath = path.join(botDir, destRel);
+    try {
+      fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+    } catch {}
 
+    await downloadToFile(url, finalPath);
+
+    return res.json({
+      ok: true,
+      remote: false,
+      msg: 'downloaded',
+      path: finalPath,
+      destPath: destRel
+    });
   } catch (e) {
     console.error('apply-version error', e);
-    return res.status(500).json({ ok:false, error:'server-error' });
+    return res.status(500).json({ ok: false, error: 'server-error' });
   }
 });
 
@@ -1304,6 +1504,17 @@ function safeJoinAndCheck(dest, entryPath) {
   if (!resolved.startsWith(baseResolved + path.sep) && resolved !== baseResolved) return null;
   return resolved;
 }
+
+// --- LOCAL FS helpers pentru editor (acceptă și căi care încep cu "/")
+function normalizeRelPath(rel) {
+  let r = String(rel || "");
+  if (path.isAbsolute(r)) r = r.replace(/^\/+/, "");
+  return r;
+}
+function safeJoinLocal(base, rel) {
+  return safeJoinAndCheck(base, normalizeRelPath(rel));
+}
+
 async function extractZipFile(filePath, dest) {
   return new Promise((resolve, reject) => {
     try {
@@ -1385,6 +1596,49 @@ async function extractWith7zOrUnrar(filePath, dest) {
       });
     }
     attemptNext();
+  });
+}
+
+/**
+ * Descarcă fișierul de la `url` în bots/<name>/ din același folder cu index.js.
+ * Returnează calea finală.
+ */
+async function downloadVersionToLocalBotsFolder(name, url) {
+  if (!name || !url) throw new Error('missing-name-or-url');
+
+  const u = new URL(url);
+  let fileName = path.basename(u.pathname);
+  if (!fileName || fileName === '/' || fileName === '.') {
+    fileName = 'downloaded-version.jar'; // fallback generic
+  }
+
+  const botsDir = path.join(__dirname, 'bots', name);
+  await fs.promises.mkdir(botsDir, { recursive: true });
+
+  const destPath = path.join(botsDir, fileName);
+  const lib = u.protocol === 'https:' ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const req = lib.get(u, (res) => {
+      // redirect simplu
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return downloadVersionToLocalBotsFolder(name, res.headers.location)
+          .then(resolve)
+          .catch(reject);
+      }
+
+      if (res.statusCode !== 200) {
+        return reject(new Error(`download failed with status ${res.statusCode}`));
+      }
+
+      const fileStream = fs.createWriteStream(destPath);
+      res.pipe(fileStream);
+
+      fileStream.on('finish', () => fileStream.close(() => resolve(destPath)));
+      fileStream.on('error', (err) => reject(err));
+    });
+
+    req.on('error', reject);
   });
 }
 
@@ -1545,15 +1799,95 @@ app.get("/explore/:bot", (req, res) => {
   res.json({ path: rel, entries });
 });
 
+// === FILES (LOCAL): list / read / write pentru editor ===
+app.get("/api/servers/:name/files/list", (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
+
+  const name = String(req.params.name || "").trim();
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, name)) {
+    return res.status(403).json({ error: "no access to server" });
+  }
+
+  const rel = String(req.query.path || "");
+  const root = path.join(BOTS_DIR, name);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return res.status(404).json({ error: "server not found" });
+  }
+
+  const dir = safeJoinLocal(root, rel);
+  if (!dir) return res.status(400).json({ error: "invalid path" });
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+    return res.status(400).json({ error: "not a directory" });
+  }
+
+  const entries = fs.readdirSync(dir, { withFileTypes: true }).map(d => {
+    const fp = path.join(dir, d.name);
+    const st = fs.statSync(fp);
+    return { name: d.name, isDir: d.isDirectory(), size: d.isDirectory() ? 0 : st.size, mtime: st.mtimeMs };
+  });
+
+  return res.json({ ok: true, path: rel, entries });
+});
+
+app.get("/api/servers/:name/files/read", (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
+
+  const name = String(req.params.name || "").trim();
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, name)) {
+    return res.status(403).json({ error: "no access to server" });
+  }
+
+  const rel = String(req.query.path || "");
+  const root = path.join(BOTS_DIR, name);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return res.status(404).json({ error: "server not found" });
+  }
+
+  const file = safeJoinLocal(root, rel);
+  if (!file) return res.status(400).json({ error: "invalid path" });
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    return res.status(404).json({ error: "file not found" });
+  }
+
+  const content = fs.readFileSync(file, "utf8");
+  return res.json({ ok: true, path: rel, content });
+});
+
+app.put("/api/servers/:name/files/write", (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
+
+  const name = String(req.params.name || "").trim();
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, name)) {
+    return res.status(403).json({ error: "no access to server" });
+  }
+
+  const rel = String(req.body && req.body.path || "");
+  const content = String((req.body && req.body.content) || "");
+  const root = path.join(BOTS_DIR, name);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return res.status(404).json({ error: "server not found" });
+  }
+
+  const file = safeJoinLocal(root, rel);
+  if (!file) return res.status(400).json({ error: "invalid path" });
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content, "utf8");
+  return res.json({ ok: true });
+});
+
 // --- LOG BUFFER ---
 const LOG_BUFFER_SIZE = 500;
 const buffers = {};
 function initBuffer(bot) { if (!buffers[bot]) buffers[bot] = []; }
 function pushBuffer(bot, line) {
   initBuffer(bot);
-  const buf = buffers[bot];
-  buf.push(line);
-  if (buf.length > LOG_BUFFER_SIZE) buf.shift();
+  const s = String(line)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\s+$/g, ""); // taie TOT whitespace-ul de la final (inclusiv \n)
+  if (!s) return;
+  buffers[bot].push(s);
+  if (buffers[bot].length > LOG_BUFFER_SIZE) buffers[bot].shift();
 }
 
 function safeLoadJSON(p) {
@@ -1568,21 +1902,55 @@ function loadVersions() {
 let VERSIONS_JSON = null;
 
 function findVersionUrl(providerId, versionId) {
-  const cfg = safeLoadJSON(VERSIONS_JSON);
-  // suportă atât {providers: [...]} cât și un array simplu
-  const providers = Array.isArray(cfg) ? cfg : (cfg.providers || []);
-  for (const p of providers) {
-    const pid = p.id || p.provider;
-    if (String(pid) !== String(providerId)) continue;
-    const versions = p.versions || [];
-    for (const v of versions) {
-      const vid = v.id || v.name || v.version;
-      if (String(vid) === String(versionId)) {
-        return v.url || v.link || v.download || v.href || null;
+  try {
+    const providers = Array.isArray(versionsConfig)
+      ? versionsConfig
+      : (versionsConfig.providers || []);
+
+    for (const p of providers) {
+      const pid = p.id || p.provider;
+      if (String(pid) !== String(providerId)) continue;
+
+      const versions = p.versions || [];
+      for (const v of versions) {
+        const vid = v.id || v.name || v.version;
+        if (String(vid) === String(versionId)) {
+          return v.url || v.link || v.download || v.href || null;
+        }
       }
     }
+  } catch (e) {
+    console.warn('[findVersionUrl] failed:', e && e.message);
   }
   return null;
+}
+
+function tailLogsRemote(name, baseUrl, headers) {
+  if (remoteLogClients[name]) return;
+  const url = `${baseUrl}/v1/servers/${encodeURIComponent(name)}/logs`;
+  const lib = url.startsWith("https:") ? https : httpMod;
+  const hdrs = { ...headers };
+  delete hdrs["Content-Type"];
+  const req = lib.request(url, { method: "GET", headers: hdrs });
+  req.on("response", (res) => {
+    res.setEncoding("utf8");
+    res.on("data", (chunk) => {
+      // parse SSE "data: { line: ... }"
+      const lines = String(chunk).split("\n");
+      for (const L of lines) {
+        if (L.startsWith("data: ")) {
+          try {
+            const obj = JSON.parse(L.slice(6));
+            if (obj && obj.line) _emitLine(name, obj.line);
+          } catch {}
+        }
+      }
+    });
+    res.on("end", () => { delete remoteLogClients[name]; });
+  });
+  req.on("error", () => { delete remoteLogClients[name]; });
+  req.end();
+  remoteLogClients[name] = req;
 }
 
 function getServerRecord(name) {
@@ -1596,24 +1964,6 @@ function resolveNodeBase(serverRec) {
   const port = Number(serverRec.nodeApiPort || 8080);
   if (!host) return null;
   return `http://${host}:${port}`;
-}
-
-// Conform cerinței tale: dacă bot-ul apare în servers.json => e pe nod
-function isOnNode(bot) {
-  const servers = safeLoadJSON(SERVERS_JSON);
-  return !!servers[bot];
-}
-
-function getNodeIp(bot) {
-  const servers = safeLoadJSON(SERVERS_JSON);
-  return servers[bot] && (servers[bot].ip || servers[bot].host || null);
-}
-
-function getLocalDir(bot) {
-  const servers = safeLoadJSON(SERVERS_JSON);
-  // dacă vrei override local specific în servers.json:
-  if (servers[bot] && servers[bot].baseDirLocal) return servers[bot].baseDirLocal;
-  return path.join(LOCAL_BOTS_DIR, bot);
 }
 
 
@@ -1635,6 +1985,29 @@ function findServer(botName) {
   }) || null;
 }
 
+function isRemoteEntry(entry) {
+  return !!(entry && entry.nodeId && entry.nodeId !== "local" && entry.ip);
+}
+
+async function forwardNodeKill(entry, bot) {
+  // identifică nodul după entry.nodeId
+  const node = findNodeByIdOrName(entry.nodeId);
+  if (!node) {
+    return { status: 400, json: { error: "node-not-found" } };
+  }
+
+  const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
+  const headers = nodeAuthHeadersFor(node, true); // -> pune Authorization/X-Node-Token
+
+  return httpRequestJson(
+    `${baseUrl}/v1/servers/${encodeURIComponent(bot)}/kill`,
+    "POST",
+    headers, // <— IMPORTANT: acum ai Bearer token
+    null,
+    20_000
+  );
+}
+
 // Încarcă versions.json o singură dată (dacă vrei live-reload, poți citi în route)
 let versionsConfig = { providers: [] };
 try {
@@ -1642,6 +2015,36 @@ try {
   versionsConfig = JSON.parse(rawVersions);
 } catch (e) {
   console.error('Cannot read versions.json:', e.message);
+}
+
+function stripMinecraftColors(s) {
+  if (!s) return s;
+  // culori RGB style §x§R§R§G§G§B§B
+  s = s.replace(/§x(?:§[0-9A-Fa-f]){6}/g, "");
+  // culori clasice §a, §b, §l, etc.
+  s = s.replace(/§[0-9A-FK-ORa-fk-or]/g, "");
+  return s;
+}
+
+/**
+ * Detectează dacă serverul este Minecraft
+ * 1) verifică servers.json (template === "minecraft")
+ * 2) fallback: adpanel.json cu type: "minecraft"
+ */
+function isMinecraftBot(name) {
+  // încearcă servers.json (index)
+  const entry = findServer(name);
+  if (entry && entry.template && String(entry.template).toLowerCase() === 'minecraft') {
+    return true;
+  }
+  // fallback: citește adpanel.json din folderul local (dacă există)
+  try {
+    const metaPath = path.join(BOTS_DIR, name, 'adpanel.json');
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    if (String(meta.type || '').toLowerCase() === 'minecraft') return true;
+    if (/server\.jar$/i.test(String(meta.start || ''))) return true;
+  } catch {}
+  return false;
 }
 
 const ANSI_RE = new RegExp(
@@ -1654,13 +2057,53 @@ function stripMinecraftColors(s) {
   s = s.replace(/§[0-9A-FK-ORa-fk-or]/g, "");
   return s;
 }
-function cleanLog(bot, s) {
-  if (!isMinecraftBot(bot)) return s;
-  return stripMinecraftColors(s.replace(ANSI_RE, ""));
-}
 
-// --- SOCKET.IO: CONTAINERS ---
-const logProcesses = {}; // name -> child process (docker logs -f)
+/**
+ * Curăță logurile:
+ *  - scoate ANSI
+ *  - scoate culorile Minecraft
+ *  - OPTIONAL: ascunde liniile de init ale imaginii itzg
+ */
+function cleanLog(bot, chunk) {
+  if (!chunk) return "";
+  let s = chunk.toString();
+
+  // scoate escape ANSI
+  s = s.replace(ANSI_RE, "");
+
+  // normalize CRLF/CR -> LF
+  s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // taie prefixele venite de la agenți remote (docker stream)
+  s = s.replace(/^(?:stdout|stderr):\s?/gm, "");
+
+  const out = [];
+  for (let line of s.split("\n")) {
+    // ascunde “waiting container …” emis de agentul remote
+    if (/^\s*\[waiting\]\s+container\b/i.test(line)) continue;
+
+    // filtrele tale existente
+    if (
+      line.includes("Usage:  docker") ||
+      line.includes("Run 'docker COMMAND --help'") ||
+      line.includes("For more help on how to use Docker")
+    ) continue;
+    if (/^\s*Container started\s*$/i.test(line)) continue;
+    if (/^[0-9a-f]{64}(?:\s*Container started)?\s*$/i.test(line)) continue;
+    if (/Error response from daemon:\s*No such container/i.test(line)) continue;
+    if (/^\s*\[init\]\s/i.test(line)) continue;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z,?version=.*$/i.test(line)) continue;
+
+    line = line.replace(/\s+$/,"");
+    if (typeof isMinecraftBot === "function" && isMinecraftBot(bot)) {
+      line = stripMinecraftColors(line);
+    }
+    if (line.trim() === "") continue;
+    out.push(line);
+  }
+
+  return out.join("\n").replace(/\n{2,}/g, "\n");
+}
 
 function buildArgsFromTemplate(name, tpl, botDir) {
   const d = tpl.docker || {};
@@ -1717,25 +2160,71 @@ function getVersionUrlFromConfig(providerId, versionId) {
   return null;
 }
 
-function tailLogs(name) {
+function _emitLine(name, text) {
+  const cleaned = cleanLog(name, text);
+  if (!cleaned) return;
+
+  const noTrail = cleaned.replace(/\s+$/g, "");
+  if (!noTrail) return;
+
+  pushBuffer(name, noTrail);
+  io.to(name).emit("output", noTrail);
+
+  // Banner o singură dată când Paper zice că e "Done ..."
+  if (
+    !_startedOnce.has(name) &&
+    /\bDone\s+\(.+?\)!\s+For help, type "help"/.test(noTrail)
+  ) {
+    _startedOnce.add(name);
+    const banner = "[ADPanel] Server started";
+    pushBuffer(name, banner);
+    io.to(name).emit("output", banner);
+  }
+}
+
+async function tailLogs(name) {
   if (logProcesses[name]) return;
+
+  // pornește tail doar dacă există containerul
+  try {
+    await dockerCollect(["inspect", name]);
+  } catch {
+    setTimeout(() => tailLogs(name), 500);
+    return;
+  }
+
   const p = docker(["logs", "-f", name]);
   logProcesses[name] = p;
-  p.stdout.on("data", d => {
-    const s = cleanLog(name, d.toString());
-    pushBuffer(name, s);
-    io.to(name).emit("output", s);
-  });
-  p.stderr.on("data", d => {
-    const s = cleanLog(name, d.toString());
-    pushBuffer(name, s);
-    io.to(name).emit("output", s);
-  });
+  _lineBuf[name] = "";
+
+  function softSplit(buf) {
+    buf = buf.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    // introduce NL înaintea markerelor cunoscute (dacă nu e deja un \n)
+    buf = buf
+      .replace(/(?<!\n)(?=20\d{2}-\d{2}-\d{2}T)/g, "\n") // ISO 8601
+      .replace(/(?<!\n)(?=\[\d{2}:\d{2}:\d{2}\s(?:INFO|WARN|ERROR))/g, "\n")
+      .replace(/(?<!\n)(?=Starting org\.bukkit\.craftbukkit\.Main)/g, "\n")
+      .replace(/(?<!\n)(?=\*\*\* Warning)/g, "\n");
+    return buf.replace(/\n{2,}/g, "\n");
+  }
+
+  function onData(d) {
+    let buf = (_lineBuf[name] || "") + d.toString();
+    buf = softSplit(buf);
+    const parts = buf.split("\n");
+    for (let i = 0; i < parts.length - 1; i++) _emitLine(name, parts[i]);
+    _lineBuf[name] = parts[parts.length - 1]; // rest neterminat (fără \n)
+  }
+
+  p.stdout.on("data", onData);
+  p.stderr.on("data", onData);
+
   p.on("close", () => {
+    const rem = _lineBuf[name];
+    if (rem) _emitLine(name, rem);
+    delete _lineBuf[name];
     delete logProcesses[name];
-    const msg = "[logs] stream closed\n";
-    pushBuffer(name, msg);
-    io.to(name).emit("output", msg);
+    _emitLine(name, "[ADPanel] Server closed");
   });
 }
 
@@ -1854,10 +2343,10 @@ function writeDiscordBotScaffold(botDir) {
   try { fs.writeFileSync(path.join(botDir, "package.json"), JSON.stringify(pkg, null, 2), "utf8"); } catch {}
 }
 
-// Extended: allow overrideDocker (e.g., ports) without breaking existing calls
 function runTemplateContainerNow(name, templateId, botDir, moreEnv = {}, overrideDocker = null) {
   const tpl = DOCKER_TEMPLATES.find(t => t.id === templateId);
   if (!tpl) throw new Error("Unknown template");
+
   const copy = JSON.parse(JSON.stringify(tpl));
   copy.docker = copy.docker || {};
   if (overrideDocker && overrideDocker.env) {
@@ -1870,15 +2359,21 @@ function runTemplateContainerNow(name, templateId, botDir, moreEnv = {}, overrid
     if (typeof overrideDocker.command === "string") copy.docker.command = overrideDocker.command;
     if (typeof overrideDocker.restart === "string") copy.docker.restart = overrideDocker.restart;
   }
+
   const args = buildArgsFromTemplate(name, copy, botDir);
   const p = docker(args);
-  p.stdout.on("data", (d) => { const s = d.toString(); pushBuffer(name, s); io.to(name).emit("output", s); });
-  p.stderr.on("data", (d) => { const s = d.toString(); pushBuffer(name, s); io.to(name).emit("output", s); });
+
+  // NU atașăm p.stdout (Docker ar scrie ID-ul containerului).
+  // Dacă vrei erorile de la `docker run`, poți lăsa stderr:
+p.stderr.on("data", d => _emitLine(name, d.toString()));
+
   p.on("close", (code) => {
-    const msg = code === 0 ? "Container started\n" : "Failed to start container\n";
-    pushBuffer(name, msg);
-    io.to(name).emit("output", msg);
-    if (code === 0) tailLogs(name);
+if (code === 0) {
+  _emitLine(name, "[ADPanel] Server started");
+  tailLogs(name);
+} else {
+  _emitLine(name, "[ADPanel] Server failed to start");
+}
   });
 }
 
@@ -1960,25 +2455,36 @@ app.post("/api/servers/create", async (req, res) => {
     if (templateId === "minecraft") {
       const fork = mcFork || "paper";
       const version = mcVersion || "1.21.8";
-      const hostPort = clampPort(hostPortRaw);
-      savedPort = hostPort;
+const hostPort = clampPort(hostPortRaw);
+savedPort = hostPort;
 
-      writeMinecraftScaffold(botDir, name, fork, version);
+// scrie fișierele de bază (eula, adpanel.json, server.properties simplu)
+writeMinecraftScaffold(botDir, name, fork, version);
 
-      const jarUrl = await getMinecraftJarUrl(fork, version);
-      const jarPath = path.join(botDir, "server.jar");
+// setăm și portul în server.properties ca să nu fie 25565
+setMinecraftServerPort(botDir, hostPort);
+
+const jarUrl = await getMinecraftJarUrl(fork, version);
+const jarPath = path.join(botDir, "server.jar");
       try { await downloadToFile(jarUrl, jarPath); } catch (e) {
         console.warn("[minecraft] download failed:", e && e.message);
       }
 
       await pullImage("itzg/minecraft-server:latest");
 
-      const extraEnv = {
-        TYPE: "CUSTOM",
-        CUSTOM_SERVER: "/data/server.jar",
-        ENABLE_RCON: "false",
-        CREATE_CONSOLE_IN_PIPE: "true"
-      };
+const uid = typeof process.getuid === "function" ? process.getuid() : 1000;
+const gid = typeof process.getgid === "function" ? process.getgid() : 1000;
+
+const extraEnv = {
+  TYPE: "CUSTOM",
+  CUSTOM_SERVER: "/data/server.jar",
+  ENABLE_RCON: "false",
+  CREATE_CONSOLE_IN_PIPE: "true",
+  UID: String(uid),
+  GID: String(gid),
+  // dacă setezi și portul:
+  SERVER_PORT: String(hostPort),
+};
 
       const overrideDocker = { ports: [`${hostPort}:25565`] };
       runTemplateContainerNow(name, "minecraft", botDir, extraEnv, overrideDocker);
@@ -2219,101 +2725,64 @@ app.get('/api/servers/:bot/versions/:providerId', (req, res) => {
   });
 });
 
-app.get('/api/servers/:bot/versions/:providerId', (req, res) => {
-  const bot = req.params.bot;
-  const providerId = req.params.providerId;
-
-  const server = findServer(bot);
-  if (!server) {
-    return res.status(404).json({ error: 'server-not-found' });
-  }
-
-  if (server.template !== 'minecraft') {
-    return res.status(400).json({ error: 'not-minecraft-template' });
-  }
-
-  const provider = (versionsConfig.providers || []).find(
-    p => p.id === providerId
-  );
-
-  if (!provider) {
-    return res.status(404).json({ error: 'provider-not-found' });
-  }
-
-  return res.json({
-    provider: provider.id,
-    displayName: provider.name,
-    description: provider.description,
-    versions: provider.versions || []
-  });
-});
-
 // --- SOCKET.IO
 io.use((socket, next) => {
   sessionMiddleware(socket.request, socket.request.res || {}, next);
 });
+
 io.on("connection", (socket) => {
-  function deny(bot, msg = "Unauthorized\n") {
-    try {
-      pushBuffer(bot, msg);
-      io.to(bot).emit("output", msg);
-    } catch {}
+  socket.on("join", (botName) => {
+    const name = (botName || "").toString().trim();
+    if (!name) return;
+    try { socket.join(name); } catch (_) {}
+});
+  // helpers vizibile DOAR pentru conexiunea curentă
+  function deny(botName, msg = "Permission denied") {
+    io.to(botName).emit("output", msg);
   }
-  function getSockUser() {
-    return socket.request && socket.request.session ? socket.request.session.user : null;
-  }
-  function hasPerm(bot, key) {
-    const email = getSockUser();
-    if (!email) return false;
-    const u = findUserByEmail(email);
-    if (u && u.admin) return true;
-    const p = getEffectivePermsForUserOnServer(email, bot);
-    return !!p[key];
+  function hasPerm(botName, permKey) {
+    const email = socket.request?.session?.user;
+    const perms = getEffectivePermsForUserOnServer(email, botName);
+    return !!(perms && perms[permKey]);
   }
 
-  socket.on("join", (bot) => {
-    const email = getSockUser();
-    if (!email) return;
-    if (!isAdmin({ session:{ user: email } }) && !userHasAccessToServer(email, bot)) return;
-    socket.join(bot);
-    initBuffer(bot);
-    buffers[bot].forEach((line) => socket.emit("output", line));
-  });
+socket.on('readFile', async ({ bot, path: rel }) => {
+  try {
+    const abs = safeResolve(bot, rel);
+    const content = await readText(abs);
+    io.to(bot).emit('fileData', { path: rel, content });
+  } catch (err) {
+    io.to(bot).emit('fileData', { path: rel, content: `/* ERROR: ${err.message} */` });
+  }
+});
 
-  socket.on("readFile", ({ bot, path: rel }) => {
-    if (!hasPerm(bot, "files_read")) return deny(bot);
-    try {
-      const full = path.join(BOTS_DIR, bot, rel);
-      const c = fs.readFileSync(full, "utf8");
-      socket.emit("fileData", { path: rel, content: c });
-    } catch (e) {
-      deny(bot, "Failed to read file\n");
-    }
-  });
+socket.on('writeFile', async ({ bot, path: rel, content }) => {
+  try {
+    const abs = safeResolve(bot, rel);
+    await fsp.mkdir(path.dirname(abs), { recursive: true });
+    await fsp.writeFile(abs, content ?? '', 'utf8');
+    io.to(bot).emit('toast', { type: 'success', msg: `Saved ${rel}` });
+  } catch (err) {
+    io.to(bot).emit('toast', { type: 'error', msg: `Save failed: ${err.message}` });
+  }
+});
 
-  socket.on("writeFile", ({ bot, path: rel, content }) => {
-    if (!hasPerm(bot, "files_create")) return deny(bot);
-    try {
-      fs.writeFileSync(path.join(BOTS_DIR, bot, rel), content);
-      socket.emit("output", `Saved ${rel}\n`);
-    } catch (e) {
-      deny(bot, "Failed to save file\n");
-    }
-  });
-
-  socket.on("deleteFile", ({ bot, path: rel, isDir }) => {
-    if (!hasPerm(bot, "files_delete")) return deny(bot);
-    try {
-      fs.rmSync(path.join(BOTS_DIR, bot, rel), { recursive: isDir, force: true });
-      socket.emit("output", `Deleted ${rel}\n`);
-    } catch (e) {
-      deny(bot, "Failed to delete\n");
-    }
-  });
+socket.on('deleteFile', async ({ bot, path: rel }) => {
+  try {
+    const abs = safeResolve(bot, rel);
+    await fsp.rm(abs, { recursive: true, force: true });
+    io.to(bot).emit('toast', { type: 'success', msg: `Deleted ${rel}` });
+  } catch (err) {
+    io.to(bot).emit('toast', { type: 'error', msg: `Delete failed: ${err.message}` });
+  }
+});
 
   socket.on("action", async (data) => {
     const { bot, cmd, file, version, port, templateId, docker: overrideDocker } = data || {};
     const botDir = path.join(BOTS_DIR, bot);
+
+    // asigură-te că socketul e în “camera” bot-ului ca să primească io.to(bot).emit(...)
+    if (bot) { try { socket.join(bot); } catch {} }
 
     function logAndBroadcast(chunk) {
       const str = cleanLog(bot, chunk.toString());
@@ -2321,126 +2790,181 @@ io.on("connection", (socket) => {
       io.to(bot).emit("output", str);
     }
 
-    if (cmd === "run" && !hasPerm(bot, "server_start")) return deny(bot);
+    // perm check
     if ((cmd === "stop" || cmd === "restart") && !hasPerm(bot, "server_stop")) return deny(bot);
+    if (cmd === "run" && !hasPerm(bot, "server_start")) return deny(bot);
+    if (cmd === "install" && !hasPerm(bot, "files_create")) return deny(bot);
 
     try {
-      if (cmd === "run") {
+      switch (cmd) {
+        case "run": {
+       const entry = findServer(bot);
+       if (isRemoteEntry(entry)) {
+        const node = findNodeByIdOrName(entry.nodeId);
+        if (!node) { _emitLine(bot, "[ADPanel] node not found"); break; }
+        const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
+        const headers = nodeAuthHeadersFor(node, true);
+        const hostPort = entry && entry.port ? clampPort(entry.port) : clampPort(port || 25565);
+        const r = await httpRequestJson(
+          `${baseUrl}/v1/servers/${encodeURIComponent(bot)}/start`,
+          "POST", headers, { hostPort }, 20000
+    );
+        if (r.status !== 200 || !(r.json && r.json.ok)) {
+          const msg = (r.json && (r.json.error || r.json.detail)) || `node status ${r.status}`;
+          _emitLine(bot, "[ADPanel] remote start failed: " + msg);
+          break;
+    }
+        _emitLine(bot, "[ADPanel] Remote start OK");
+        try { tailLogsRemote(bot, baseUrl, headers); } catch {}
+        break;
+}
         await ensureNoContainer(bot);
 
-        let runArgs;
-        if (templateId) {
-          const tpl = DOCKER_TEMPLATES.find(t => t.id === templateId);
-          if (!tpl) throw new Error("Unknown template");
-          const tplCopy = JSON.parse(JSON.stringify(tpl));
-          if (overrideDocker && typeof overrideDocker === "object") {
-            tplCopy.docker = Object.assign({}, tplCopy.docker || {}, overrideDocker || {});
-          }
-          if (templateId === "minecraft") {
-            tplCopy.docker.env = Object.assign({}, tplCopy.docker.env, {
-              ENABLE_RCON: "false",
-              CREATE_CONSOLE_IN_PIPE: "true",
-              TYPE: "CUSTOM",
-              CUSTOM_SERVER: "/data/server.jar"
-            });
-          }
-          runArgs = buildArgsFromTemplate(bot, tplCopy, botDir);
-          const image = `${tplCopy.docker.image}:${tplCopy.docker.tag}`;
-          try { await dockerCollect(["pull", image]); } catch (e) {}
-        } else {
-          runArgs = guessArgsForLegacyRun(bot, botDir, file, port);
-        }
+          let runArgs;
+          if (templateId) {
+            const tpl = DOCKER_TEMPLATES.find(t => t.id === templateId);
+            if (!tpl) throw new Error("Unknown template");
 
-        const p = docker(runArgs);
-        p.stdout.on("data", logAndBroadcast);
-        p.stderr.on("data", logAndBroadcast);
-        p.on("close", (code) => {
-          if (code === 0) {
-            const msg = "Container started\n";
-            pushBuffer(bot, msg);
-            io.to(bot).emit("output", msg);
-            tailLogs(bot);
-          } else {
-            const msg = "Failed to start container\n";
-            pushBuffer(bot, msg);
-            io.to(bot).emit("output", msg);
-          }
-        });
+            const tplCopy = JSON.parse(JSON.stringify(tpl));
+            if (templateId === "minecraft") {
+              const srv = findServer(bot);
+              const hostPort = srv && srv.port ? clampPort(srv.port) : clampPort(port || 25565);
 
-      } else if (cmd === "stop") {
-        if (isMinecraftBot(bot)) {
-          try {
-            const p = docker(["exec", "--user", "1000", bot, "mc-send-to-console", "stop"]);
-            p.stdout.on("data", logAndBroadcast);
-            p.stderr.on("data", logAndBroadcast);
-          } catch (e) {}
-          setTimeout(async () => {
-            try {
-              await dockerCollect(["stop", bot]);
-              const msg = "Container stopped\n";
-              pushBuffer(bot, msg);
-              io.to(bot).emit("output", msg);
-            } catch (e) {
-              const msg = "Failed to stop container\n";
-              pushBuffer(bot, msg);
-              io.to(bot).emit("output", msg);
+              setMinecraftServerPort(botDir, hostPort);
+              tplCopy.docker.ports = [`${hostPort}:25565`];
+              tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, {
+                ENABLE_RCON: "false",
+                CREATE_CONSOLE_IN_PIPE: "true",
+                TYPE: "CUSTOM",
+                CUSTOM_SERVER: "/data/server.jar",
+                SERVER_PORT: String(hostPort)
+              });
+            } else if (overrideDocker && typeof overrideDocker === "object") {
+              if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
+              if (overrideDocker.env) {
+                tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
+              }
             }
-          }, 20000);
-        } else {
-          try {
-            await dockerCollect(["stop", bot]);
-            const msg = "Container stopped\n";
-            pushBuffer(bot, msg);
-            io.to(bot).emit("output", msg);
-          } catch (e) {
-            const msg = "Failed to stop container\n";
-            pushBuffer(bot, msg);
-            io.to(bot).emit("output", msg);
+
+            runArgs = buildArgsFromTemplate(bot, tplCopy, botDir);
+            const image = `${tplCopy.docker.image}:${tplCopy.docker.tag}`;
+            try { await dockerCollect(["pull", image]); } catch (_) {}
+          } else {
+            runArgs = guessArgsForLegacyRun(bot, botDir, file, port);
           }
+
+          const p = callDocker(runArgs);
+          if (!p) {
+            _emitLine(bot, "[ADPanel] cannot run: empty/invalid docker args");
+            return;
+          }
+
+          p.stderr.on("data", d => _emitLine(bot, d.toString()));
+          p.on("close", (code) => {
+            if (code === 0) {
+              _emitLine(bot, "[ADPanel] Server started");
+              tailLogs(bot);
+            } else {
+              _emitLine(bot, "[ADPanel] Server failed to start");
+            }
+          });
+          break;
         }
 
-      } else if (cmd === "restart") {
-        try {
-          await dockerCollect(["restart", bot]);
-          const msg = "Container restarted\n";
-          pushBuffer(bot, msg);
-          io.to(bot).emit("output", msg);
-          tailLogs(bot);
-        } catch (e) {
-          const msg = "Failed to restart container\n";
-          pushBuffer(bot, msg);
-          io.to(bot).emit("output", msg);
+        case "stop": {
+          try {
+            const entry = findServer(bot);
+            if (isRemoteEntry(entry)) {
+              const node = findNodeByIdOrName(entry.nodeId);
+              const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
+              const headers = nodeAuthHeadersFor(node, true);
+              const r = await httpRequestJson(
+                `${baseUrl}/v1/servers/${encodeURIComponent(bot)}/stop`,
+                "POST", headers, null, 20000
+  );
+              if (r.status !== 200 || !(r.json && r.json.ok)) {
+                const msg = (r.json && (r.json.error || r.json.detail)) || `node status ${r.status}`;
+                throw new Error(msg);
+              }
+            _emitLine(bot, "Stop forwarded to node");
+            } else {
+              await dockerCollect(["kill", bot]);
+              _emitLine(bot, "Container killed");
+            }
+          } catch (e) {
+            _emitLine(bot, "Failed to kill container: " + (e?.message || String(e)));
+          }
+          break;
         }
 
-      } else if (cmd === "install") {
-        const img = version ? `node:${version}-alpine` : "node:20-alpine";
-        const inst = docker(["pull", img]);
-        inst.stdout.on("data", logAndBroadcast);
-        inst.stderr.on("data", logAndBroadcast);
-
+      case "kill": {
+      const entry = findServer(bot);
+      if (isRemoteEntry(entry)) {
+        const node = findNodeByIdOrName(entry.nodeId);
+        const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
+        const headers = nodeAuthHeadersFor(node, true);
+        await httpRequestJson(`${baseUrl}/v1/servers/${encodeURIComponent(bot)}/kill`, "POST", headers, null, 20000);
+        _emitLine(bot, "Kill forwarded to node");
       } else {
-        io.to(bot).emit("output", "Unknown cmd\n");
+        await dockerCollect(["rm", "-f", bot]);
+        _emitLine(bot, "Container removed");
+      }
+      break;
+    }
+
+        case "restart": {
+          try {
+            const entry = findServer(bot);
+            if (isRemoteEntry(entry)) {
+            const node = findNodeByIdOrName(entry.nodeId);
+            const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
+            const headers = nodeAuthHeadersFor(node, true);
+            const r = await httpRequestJson(`${baseUrl}/v1/servers/${encodeURIComponent(bot)}/restart`, "POST", headers, null, 20000);
+            if (!r.json || !r.json.ok) throw new Error("node restart failed");
+            _emitLine(bot, "Node container restarted");
+            tailLogsRemote(bot, baseUrl, headers);
+            } else {
+            await dockerCollect(["restart", bot]);
+           _emitLine(bot, "Container restarted");
+           tailLogs(bot);
+    }
+          } catch (e) {
+            _emitLine(bot, "Failed to restart container");
+          }
+          break;
+        }
+
+        case "install": {
+          const img = version ? `node:${version}-alpine` : "node:20-alpine";
+          const inst = docker(["pull", img]);
+          inst.stdout.on("data", d => logAndBroadcast(d));
+          inst.stderr.on("data", d => logAndBroadcast(d));
+          break;
+        }
+
+        default:
+          io.to(bot).emit("output", "Unknown cmd");
+          break;
       }
     } catch (e) {
-      const msg = `[error] ${e && e.message ? e.message : String(e)}\n`;
-      pushBuffer(bot, msg);
-      io.to(bot).emit("output", msg);
+      const msg = `[error] ${e?.message || String(e)}\n`;
+      _emitLine(bot, msg);
     }
   });
 
   socket.on("command", ({ bot, command }) => {
+    if (bot) { try { socket.join(bot); } catch {} }
     if (!hasPerm(bot, "console_write")) return deny(bot);
     if (!command || !command.trim()) return;
+
     if (isMinecraftBot(bot)) {
       const cp = docker(["exec", "--user", "1000", bot, "mc-send-to-console", command]);
-      cp.stdout.on("data", (d) => { const s = cleanLog(bot, d.toString()); pushBuffer(bot, s); io.to(bot).emit("output", s); });
-      cp.stderr.on("data", (d) => { const s = cleanLog(bot, d.toString()); pushBuffer(bot, s); io.to(bot).emit("output", s); });
-      cp.on("close", () => {});
+      cp.stdout.on("data", d => emitChunkLines(bot, d));
+      cp.stderr.on("data", d => emitChunkLines(bot, d));
     } else {
       const cp = docker(["exec", "-i", bot, "sh", "-lc", command]);
-      cp.stdout.on("data", (d) => { const s = d.toString(); pushBuffer(bot, s); io.to(bot).emit("output", s); });
-      cp.stderr.on("data", (d) => { const s = d.toString(); pushBuffer(bot, s); io.to(bot).emit("output", s); });
-      cp.on("close", () => {});
+      cp.stdout.on("data", d => emitChunkLines(bot, d));
+      cp.stderr.on("data", d => emitChunkLines(bot, d));
     }
   });
 });

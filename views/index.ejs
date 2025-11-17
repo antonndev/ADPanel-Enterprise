@@ -378,21 +378,6 @@
     </div>
 
     <script>
-      const darkFavicon = '/images/adpanel-white.png';
-      const lightFavicon = '/images/adpanel-dark.png';
-
-      function updateIcons() {
-        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(el => el.remove());
-        const linkFavicon = document.createElement('link');
-        linkFavicon.rel = 'icon';
-        linkFavicon.type = 'image/png';
-        linkFavicon.href = isDark ? darkFavicon : lightFavicon;
-        document.head.appendChild(linkFavicon);
-      }
-      updateIcons();
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateIcons);
-
       window.addEventListener('DOMContentLoaded', () => {
         // ---- Splash & layout behaviors (nemodificate) ----
         const splash = document.getElementById('splash-screen');
