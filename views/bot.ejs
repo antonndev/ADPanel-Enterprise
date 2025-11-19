@@ -35,10 +35,11 @@
       .more-btn {
         background: transparent; border: none; color: #bfc8d4; cursor: pointer;
         font-size: 18px; padding: 6px; border-radius: 6px;
+        align-self: flex-end;
       }
       .more-btn:hover { background: rgba(255,255,255,0.02); color:#fff; }
       .more-menu {
-        position: absolute; right: 0; top: 28px; background: #0f1114;
+        position: absolute; left: 0; top: 28px; background: #0f1114;
         border: 1px solid rgba(255,255,255,0.04); box-shadow: 0 8px 30px rgba(0,0,0,0.6);
         border-radius: 8px; overflow: hidden; z-index: 2000; min-width: 160px; display: none;
       }
@@ -78,14 +79,20 @@
       /* FILES LIST – full-width, modern cards */
       #filesModal .modal{
         position:relative;
-        width:92vw;
-        max-width:1280px;
-        height:86vh;
-        max-height:86vh;
+        width:94vw;
+        max-width:1400px;
+        height:88vh;
+        max-height:88vh;
         display:flex;
         flex-direction:column;
-        background:var(--bg);
+        background:radial-gradient(circle at 0% 0%, rgba(96,165,250,0.08), transparent 50%),
+          radial-gradient(circle at 100% 0%, rgba(16,185,129,0.08), transparent 50%),
+          linear-gradient(180deg, rgba(14,17,22,0.95), rgba(6,9,12,0.98));
         color:var(--text);
+        border:1px solid rgba(255,255,255,0.08);
+        border-radius:24px;
+        box-shadow:0 35px 90px rgba(0,0,0,0.65);
+        overflow:hidden;
       }
       #filesModal .modal-body{
         flex:1;
@@ -96,40 +103,140 @@
       #filesModal .modal-right{ display:none; }
 
       /* header din Files: breadcrumbs la stânga, Upload/New la dreapta */
-      #filesModal .modal-left > div:first-child{
+      #fileUploadModal{ display:none; } /* ascunde input-ul, folosim label-ul ca buton */
+
+      .file-toolbar{
         display:flex;
         justify-content:space-between;
         align-items:center;
-        margin-bottom:8px;
+        gap:16px;
+        padding:12px 0;
+        border-bottom:1px solid rgba(255,255,255,0.05);
       }
-      #fileUploadModal{ display:none; } /* ascunde input-ul, folosim label-ul ca buton */
+      .file-toolbar-left{
+        display:flex;
+        align-items:center;
+        gap:12px;
+      }
+      .file-toolbar-icon{
+        width:44px;
+        height:44px;
+        border-radius:14px;
+        background:rgba(255,255,255,0.05);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:18px;
+        color:#60a5fa;
+        box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06);
+      }
+      .file-toolbar-title{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:0.2em;}
+      #breadcrumbs{
+        font-size:16px;
+        font-weight:600;
+        color:#f3f4f6;
+      }
+      #breadcrumbs a{color:#60a5fa;text-decoration:none;}
+      #breadcrumbs a:hover{text-decoration:underline;}
+      .file-toolbar-actions{
+        display:flex;
+        gap:10px;
+        align-items:center;
+      }
+      .ghost-btn{
+        border:1px solid rgba(255,255,255,0.08);
+        background:rgba(255,255,255,0.02);
+        color:#e6eef8;
+        border-radius:999px;
+        padding:10px 16px;
+        font-size:13px;
+        display:flex;
+        align-items:center;
+        gap:8px;
+        cursor:pointer;
+        transition:all .12s ease;
+      }
+      .ghost-btn i{font-size:14px;}
+      .ghost-btn:hover{
+        background:rgba(255,255,255,0.08);
+        border-color:rgba(255,255,255,0.22);
+        transform:translateY(-1px);
+      }
+
+      .file-glance{
+        display:grid;
+        grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+        gap:12px;
+        margin:18px 0;
+      }
+      .glance-card{
+        display:flex;
+        align-items:center;
+        gap:12px;
+        padding:14px 16px;
+        border-radius:16px;
+        background:rgba(255,255,255,0.02);
+        border:1px solid rgba(255,255,255,0.04);
+        box-shadow:0 12px 40px rgba(0,0,0,0.4);
+      }
+      .glance-card .icon{
+        width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:16px;
+        color:#10b981;background:rgba(16,185,129,0.12);
+      }
+      .glance-card:nth-child(2) .icon{color:#60a5fa;background:rgba(96,165,250,0.12);}
+      .glance-card:nth-child(3) .icon{color:#f97316;background:rgba(249,115,22,0.12);}
+      .glance-label{font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:#9aa3ad;}
+      .glance-desc{font-size:15px;font-weight:600;color:#f8fafc;}
 
       /* grid entries mare cât popup-ul */
       #entries{
         flex:1;
         overflow:auto;
-        padding-right:8px;
+        padding-right:12px;
         display:grid;
-        grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
-        gap:12px;
-        padding-top:8px;
+        grid-template-columns:repeat(auto-fill,minmax(257px,1fr));
+        gap:16px;
+        padding-top:4px;
+        list-style:none;
+        margin:0;
+        align-content:start;
       }
 
       /* Modern file cards */
       .entry{
-        display:flex; justify-content:space-between; gap:12px; padding:12px 14px; align-items:center;
-        border-radius:12px; background:var(--card); border:1px solid var(--border);
-        box-shadow:0 8px 20px rgba(0,0,0,0.35);
-        transition:transform .1s ease, box-shadow .1s ease, border-color .1s ease, background .1s ease;
+        display:grid;
+        grid-template-columns:auto 1fr auto;
+        align-items:center;
+        gap:16px;
+        padding:16px 18px;
+        border-radius:18px;
+        background:rgba(9,12,18,0.9);
+        border:1px solid rgba(255,255,255,0.05);
+        box-shadow:0 15px 45px rgba(0,0,0,0.55);
+        transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
       }
       .entry:hover{
-        background:#10141b;
-        border-color:var(--border-strong);
-        transform:translateY(-1px);
-        box-shadow:0 12px 30px rgba(0,0,0,0.55);
+        background:rgba(12,17,25,0.98);
+        border-color:rgba(255,255,255,0.18);
+        transform:translateY(-3px);
+        box-shadow:0 25px 65px rgba(0,0,0,0.6);
       }
-      .entry-name{ font-size:14px; font-weight:600; color:var(--text); }
-      .entry-meta{ font-size:12px; color:var(--muted); margin-top:2px; }
+      .entry-left{display:flex;align-items:center;gap:14px;}
+      .entry-icon{
+        width:48px;height:48px;border-radius:16px;
+        display:flex;align-items:center;justify-content:center;
+        background:rgba(96,165,250,0.08);
+        color:#60a5fa;
+        font-size:20px;
+        box-shadow:inset 0 0 0 1px rgba(96,165,250,0.3);
+      }
+      .entry-icon.folder{background:rgba(250,204,21,0.12);color:#facc15;box-shadow:inset 0 0 0 1px rgba(250,204,21,0.35);}
+      .entry-name{ font-size:16px; font-weight:700; color:var(--text); }
+      .entry-meta{ font-size:13px; color:var(--muted); margin-top:3px; letter-spacing:0.08em; font-variant:all-small-caps; text-transform:none; }
+      .entry-arrow{color:#9aa3ad;font-size:14px;opacity:0;transition:opacity .12s ease, transform .12s ease;}
+      .entry:hover .entry-arrow{opacity:1;transform:translateX(4px);}
+      .entry-actions{justify-self:end;}
+      .entry-right{display:flex;align-items:center;gap:10px;justify-content:flex-end;}
 
       /* Modern editor (larg) */
       #editorModal .modal{
@@ -597,14 +704,37 @@
 
         <div class="modal-body">
           <div class="modal-left">
-            <div>
-              <div id="breadcrumbs" style="color:var(--muted);font-size:13px"></div>
-              <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
-                <label class="icon-btn" id="uploadLabel" for="fileUploadModal" style="cursor:pointer"><i class="fa-solid fa-upload"></i> Upload</label>
+            <div class="file-toolbar">
+              <div class="file-toolbar-left">
+                <div class="file-toolbar-icon"><i class="fa-solid fa-folder-tree"></i></div>
+                <div>
+                  <div class="file-toolbar-title">Working directory</div>
+                  <div id="breadcrumbs"></div>
+                </div>
+              </div>
+              <div class="file-toolbar-actions">
+                <label class="ghost-btn" id="uploadLabel" for="fileUploadModal" style="cursor:pointer"><i class="fa-solid fa-upload"></i> Upload</label>
                 <input id="fileUploadModal" type="file" />
-                <button class="icon-btn" id="newBtn" onclick="createNew()" title="New file/folder"><i class="fa-solid fa-file-circle-plus"></i> New</button>
+                <button class="ghost-btn" id="newBtn" onclick="createNew()" title="New file/folder"><i class="fa-solid fa-file-circle-plus"></i> New</button>
               </div>
             </div>
+
+            <div class="file-glance">
+              <div class="glance-card">
+                <div class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                <div>
+                  <div class="glance-label">Uploads</div>
+                  <div class="glance-desc">Drag & drop anywhere</div>
+                </div>
+              </div>
+              <div class="glance-card">
+                <div class="icon"><i class="fa-solid fa-shield"></i></div>
+              </div>
+              <div class="glance-card">
+                <div class="icon"><i class="fa-solid fa-bolt"></i></div>
+              </div>
+            </div>
+
             <ul id="entries" role="list"></ul>
           </div>
 
@@ -2658,13 +2788,12 @@ async function fetchStoreVersions(providerId){
           entriesEl.innerHTML = "";
           data.entries.forEach((e) => {
             const li = document.createElement("li"); li.className = "entry";
-            const left = document.createElement("div");
-            const icon = document.createElement("div"); icon.innerHTML = e.isDir ? '<i class="fa-solid fa-folder"></i>' : '<i class="fa-solid fa-file"></i>';
+            const left = document.createElement("div"); left.className = "entry-left";
+            const icon = document.createElement("div"); icon.className = `entry-icon ${e.isDir ? 'folder' : 'file'}`; icon.innerHTML = e.isDir ? '<i class="fa-solid fa-folder"></i>' : '<i class="fa-solid fa-file"></i>';
             const nameWrap = document.createElement("div");
             const nm = document.createElement("div"); nm.className = "entry-name"; nm.textContent = e.name;
             const meta = document.createElement("div"); meta.className = "entry-meta"; meta.textContent = e.isDir ? "Folder" : "File";
             nameWrap.appendChild(nm); nameWrap.appendChild(meta);
-            left.style.display = 'flex'; left.style.gap='8px'; left.style.alignItems='center';
             left.appendChild(icon); left.appendChild(nameWrap);
             const actions = document.createElement("div"); actions.className = "entry-actions";
             const moreBtn = document.createElement("button"); moreBtn.className = "more-btn"; moreBtn.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
@@ -2735,7 +2864,9 @@ async function fetchStoreVersions(providerId){
                 }
               }
             });
-            li.appendChild(left); li.appendChild(actions); entriesEl.appendChild(li);
+            const arrow = document.createElement("div"); arrow.className = "entry-arrow"; arrow.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+            const right = document.createElement("div"); right.className = "entry-right"; right.appendChild(actions); right.appendChild(arrow);
+            li.appendChild(left); li.appendChild(right); entriesEl.appendChild(li);
           });
           const scripts = data.entries.filter(e => !e.isDir).map(e => e.name);
           scriptSelect.innerHTML = scripts.map(s => `<option value="${s}">${s}</option>`).join("");
