@@ -1311,6 +1311,126 @@
         return 0;
       }
 
+// Vanilla (Mojang) — manifest oficial: piston-meta.mojang.com
+// Returnează { versions: [{ id,name,label,mcVersion,releaseDate,tags,downloadUrl }] }
+async function fetchVanillaVersions({ includeSnapshots = false, limit = 200 } = {}) {
+  const MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
+  let manifest;
+  try {
+    const r = await fetch(MANIFEST);
+    if (!r.ok) throw new Error('manifest not ok');
+    manifest = await r.json();
+  } catch (e) {
+    return { versions: [] };
+  }
+
+  const latestReleaseId  = manifest?.latest?.release || null;
+  const latestSnapshotId = manifest?.latest?.snapshot || null;
+
+  let list = Array.isArray(manifest?.versions) ? manifest.versions.slice() : [];
+  // filtrează după tip (release vs snapshot)
+  list = list.filter(v => includeSnapshots ? true : String(v.type) === 'release');
+  // sortare desc după data de release
+  list.sort((a, b) => new Date(b.releaseTime || b.time || 0) - new Date(a.releaseTime || a.time || 0));
+  if (limit && Number.isFinite(limit)) list = list.slice(0, limit);
+
+  // fetch în paralel manifesturile per-versiune ca să extragem server.jar
+  const results = [];
+  const concurrency = Math.min(8, Math.max(1, list.length));
+  let idx = 0;
+
+  async function worker() {
+    while (idx < list.length) {
+      const i = idx++;
+      const v = list[i];
+      try {
+        const res = await fetch(v.url);
+        if (!res.ok) continue;
+        const verMeta = await res.json();
+        const server = verMeta?.downloads?.server;
+        if (!server?.url) continue; // unele snapshot-uri vechi nu au server.jar
+        const mc = String(v.id);
+        const date = String(v.releaseTime || v.time || '').split('T')[0] || '';
+        const tags = [];
+        if (String(v.type) === 'snapshot') tags.push('snapshot'); else tags.push('release');
+        if (mc === latestReleaseId)  tags.push('latest');
+        if (mc === latestSnapshotId) tags.push('latest-snapshot');
+
+        results.push({
+          id: mc,
+          name: mc,
+          label: `Vanilla ${mc}`,
+          mcVersion: mc,
+          releaseDate: date,
+          tags,
+          downloadUrl: server.url // de forma: https://piston-data.mojang.com/v1/objects/<sha1>/server.jar
+        });
+      } catch {
+        /* noop */
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, worker));
+
+  // ordonează după versiune (folosește helperul tău existent)
+  try {
+    results.sort((a, b) => compareMcVersionsDesc(a.mcVersion, b.mcVersion));
+  } catch {
+    results.sort((a, b) => (b.releaseDate > a.releaseDate ? 1 : -1));
+  }
+
+  return { versions: results };
+}
+
+async function fetchWithTimeout(url, opts = {}, ms = 8000) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+function compareSemverDesc(a, b) {
+  const pa = a.split('.').map(n => parseInt(n, 10) || 0);
+  const pb = b.split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const da = pa[i] ?? 0, db = pb[i] ?? 0;
+    if (da !== db) return db - da;
+  }
+  return 0;
+}
+
+// Heuristică: 21.1.13 -> 1.21.1 (doar pentru label)
+function neoForgeToMcVersion(ver) {
+  const m = ver.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) return '';
+  const major = Number(m[1]); // 21 -> 1.21
+  const minor = Number(m[2]); // 1  -> .1
+  return `1.${major}.${minor}`;
+}
+
+// (OPȚIONAL) completează releaseDate cu Last-Modified, dar cu pool + timeout.
+// Poți să NU o chemi dacă vrei fast-loading 100%.
+async function addLastModifiedDates(list, urlFn, pool = 6, timeout = 5000) {
+  let idx = 0;
+  const workers = [];
+  async function worker() {
+    while (idx < list.length) {
+      const i = idx++;
+      const u = urlFn(list[i]);
+      try {
+        const r = await fetchWithTimeout(u, { method: 'HEAD' }, timeout);
+        const lm = r.headers.get('last-modified');
+        if (lm) list[i].releaseDate = new Date(lm).toISOString().slice(0, 10);
+      } catch (_) { /* ignoră timeout/CORS */ }
+    }
+  }
+  for (let i = 0; i < pool; i++) workers.push(worker());
+  await Promise.all(workers);
+}
       async function fetchPapermcVersions(){
         if (papermcVersionsCache) return papermcVersionsCache;
         const base = 'https://api.papermc.io/v2/projects/paper';
@@ -1642,6 +1762,83 @@ async function fetchLeavesVersions(){
   return { versions: out };
 }
 
+// Fetch NeoForge (din Maven) -> { versions: [...] } în același format cu ceilalți provideri
+async function fetchNeoForgeVersions() {
+  const META_URL = 'https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml';
+
+  // 1) Ia toate versiunile din maven-metadata.xml
+  const res = await fetch(META_URL);
+  if (!res.ok) return { versions: [] };
+  const xml = await res.text();
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const versions = [...doc.querySelectorAll('versioning > versions > version')]
+    .map(v => v.textContent.trim())
+    .filter(Boolean)
+    .sort(compareSemverDesc);
+
+  // 2) Convertește versiunea NeoForge -> versiune MC (heuristică: 21.1.13 -> 1.21.1)
+  function toMcVersion(neoforgeVer) {
+    // format așteptat: MAJOR.MINOR.PATCH (ex: 21.1.13)
+    const m = neoforgeVer.match(/^(\d+)\.(\d+)\.(\d+)$/);
+    if (!m) return ''; // fallback
+    const major = Number(m[1]); // 21 => MC 1.21
+    const minor = Number(m[2]); // 1  => MC 1.21.1
+    return `1.${major}.${minor}`;
+  }
+
+  // 3) Helper: Last-Modified (dacă CORS permite); altfel lăsăm string gol
+  async function getLastModified(url) {
+    try {
+      const head = await fetch(url, { method: 'HEAD' });
+      const lm = head.headers.get('last-modified');
+      if (!lm) return '';
+      const d = new Date(lm);
+      if (isNaN(d.getTime())) return '';
+      // doar YYYY-MM-DD
+      return d.toISOString().slice(0, 10);
+    } catch {
+      return '';
+    }
+  }
+
+  // 4) Construiește obiectele de versiune
+  const out = [];
+  for (const ver of versions) {
+    const mcVersion = toMcVersion(ver);
+    const base = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${ver}/neoforge-${ver}`;
+    const installerUrl = `${base}-installer.jar`;
+    const universalUrl = `${base}-universal.jar`;
+
+    const releaseDate = await getLastModified(installerUrl); // best-effort
+    out.push({
+      id: ver,
+      name: ver,
+      label: `NeoForge ${mcVersion || ver}`,
+      mcVersion: mcVersion || '',
+      releaseDate: releaseDate || '',
+      tags: ['stable'],
+      build: ver.split('.').pop() || '',
+      // Pentru provisioning recomand installer-ul; universal îl las ca alternativă
+      downloadUrl: installerUrl,
+      altDownloads: { installer: installerUrl, universal: universalUrl }
+    });
+  }
+
+  if (out[0] && !out[0].tags.includes('latest')) out[0].tags.push('latest');
+  return { versions: out };
+
+  // === helpers ===
+  function compareSemverDesc(a, b) {
+    const pa = a.split('.').map(n => parseInt(n, 10) || 0);
+    const pb = b.split('.').map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const da = pa[i] ?? 0, db = pb[i] ?? 0;
+      if (da !== db) return db - da;
+    }
+    return 0;
+  }
+}
+
 async function fetchSpigotVersions() {
   const BASE = "https://api.github.com/repos/BaldGang/spigot-build/releases?per_page=1";
 
@@ -1943,7 +2140,8 @@ async function fetchSpigotVersions() {
 
 async function fetchStoreVersions(providerId){
   const pid = (providerId || '').toString().toLowerCase();
-
+  
+  if (pid.includes('vanilla'))  return await fetchVanillaVersions();
   if (pid.includes('paper'))   return await fetchPapermcVersions();
   if (pid.includes('purpur'))  return await fetchPurpurVersions();
   if (pid.includes('velocity'))return await fetchVelocityVersions(); // <— ADĂUGAT

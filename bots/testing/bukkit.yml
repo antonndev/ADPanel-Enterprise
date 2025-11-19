@@ -10,6 +10,9 @@
 # Website: https://papermc.io/
 
 settings:
+  compatibility:
+    allow-old-keys-in-registry: false
+    enum-compatibility-mode: false
   allow-end: true
   warn-on-overload: true
   permissions-file: permissions.yml

@@ -1,6 +1,13 @@
 {
   "providers": [
     {
+      "id": "vanilla",
+      "name": "Vanilla",
+      "description": "Vanilla Minecraft with no features",
+      "logo": "https://cdn.freebiesupply.com/logos/large/2x/minecraft-1-logo-png-transparent.png",
+      "versions": []
+    },
+    {
       "id": "papermc",
       "name": "PaperMC",
       "description": "Fast, highly optimized Spigot fork with great plugin compatibility.",
