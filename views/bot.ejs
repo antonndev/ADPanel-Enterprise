@@ -35,10 +35,11 @@
       .more-btn {
         background: transparent; border: none; color: #bfc8d4; cursor: pointer;
         font-size: 18px; padding: 6px; border-radius: 6px;
+        align-self: flex-end;
       }
       .more-btn:hover { background: rgba(255,255,255,0.02); color:#fff; }
       .more-menu {
-        position: absolute; right: 0; top: 28px; background: #0f1114;
+        position: absolute; left: 0; top: 28px; background: #0f1114;
         border: 1px solid rgba(255,255,255,0.04); box-shadow: 0 8px 30px rgba(0,0,0,0.6);
         border-radius: 8px; overflow: hidden; z-index: 2000; min-width: 160px; display: none;
       }
@@ -193,17 +194,18 @@
         overflow:auto;
         padding-right:12px;
         display:grid;
-        grid-template-columns:repeat(auto-fill,minmax(420px,1fr));
+        grid-template-columns:repeat(auto-fill,minmax(257px,1fr));
         gap:16px;
         padding-top:4px;
         list-style:none;
         margin:0;
+        align-content:start;
       }
 
       /* Modern file cards */
       .entry{
         display:grid;
-        grid-template-columns:auto 1fr auto auto;
+        grid-template-columns:auto 1fr auto;
         align-items:center;
         gap:16px;
         padding:16px 18px;
@@ -230,10 +232,11 @@
       }
       .entry-icon.folder{background:rgba(250,204,21,0.12);color:#facc15;box-shadow:inset 0 0 0 1px rgba(250,204,21,0.35);}
       .entry-name{ font-size:16px; font-weight:700; color:var(--text); }
-      .entry-meta{ font-size:13px; color:var(--muted); margin-top:3px; letter-spacing:0.04em; text-transform:uppercase; }
+      .entry-meta{ font-size:13px; color:var(--muted); margin-top:3px; letter-spacing:0.08em; font-variant:all-small-caps; text-transform:none; }
       .entry-arrow{color:#9aa3ad;font-size:14px;opacity:0;transition:opacity .12s ease, transform .12s ease;}
       .entry:hover .entry-arrow{opacity:1;transform:translateX(4px);}
       .entry-actions{justify-self:end;}
+      .entry-right{display:flex;align-items:center;gap:10px;justify-content:flex-end;}
 
       /* Modern editor (larg) */
       #editorModal .modal{
@@ -726,17 +729,9 @@
               </div>
               <div class="glance-card">
                 <div class="icon"><i class="fa-solid fa-shield"></i></div>
-                <div>
-                  <div class="glance-label">Secure</div>
-                  <div class="glance-desc">Powered by your ADPanel bot</div>
-                </div>
               </div>
               <div class="glance-card">
                 <div class="icon"><i class="fa-solid fa-bolt"></i></div>
-                <div>
-                  <div class="glance-label">Shortcuts</div>
-                  <div class="glance-desc">Use the taskbar buttons below</div>
-                </div>
               </div>
             </div>
 
@@ -2870,7 +2865,8 @@ async function fetchStoreVersions(providerId){
               }
             });
             const arrow = document.createElement("div"); arrow.className = "entry-arrow"; arrow.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
-            li.appendChild(left); li.appendChild(actions); li.appendChild(arrow); entriesEl.appendChild(li);
+            const right = document.createElement("div"); right.className = "entry-right"; right.appendChild(actions); right.appendChild(arrow);
+            li.appendChild(left); li.appendChild(right); entriesEl.appendChild(li);
           });
           const scripts = data.entries.filter(e => !e.isDir).map(e => e.name);
           scriptSelect.innerHTML = scripts.map(s => `<option value="${s}">${s}</option>`).join("");
