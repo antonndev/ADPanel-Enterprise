@@ -1361,7 +1361,13 @@
         return j;
       }
 
-      function normalizeTemplate(t){ return (t ?? '').toString().trim().toLowerCase(); }
+      function normalizeTemplate(t){
+        const raw = (t ?? '').toString().trim().toLowerCase();
+        if (!raw) return '';
+        if (["discord", "discord-bot", "discord bot", "node", "nodejs", "python", "bot"].includes(raw)) return 'discord-bot';
+        if (["mc", "minecraft"].includes(raw)) return 'minecraft';
+        return raw;
+      }
       function updateStoreVisibility(){
         const btn  = document.getElementById('storeBtn');
         const dock = document.getElementById('dockStore');
@@ -1400,6 +1406,8 @@
 
       async function openStoreModal() {
         if (!storeModal) return;
+        if (!serverInfo) await loadServerInfo();
+        updateStoreVisibility();
         storeModal.classList.add('show');
         storeModal.style.display = 'flex';
         storeModal.setAttribute('aria-hidden', 'false');
@@ -2767,6 +2775,7 @@ async function fetchStoreVersions(providerId){
         renderStoreProvidersView();
       });
       if (storeTabPlugins) storeTabPlugins.addEventListener('click', ()=> {
+        if (storeTabPlugins.classList.contains('hidden')) return;
         renderPluginsUI();
       });
 

@@ -649,8 +649,7 @@ app.get("/api/server-info/:name", async (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
 
   const raw = String(req.params.name || "").trim();
-  // folosim findServer ca să luăm exact intrarea din servers.json
-  const entry = findServer(raw) || {};
+  const { entry = {}, meta = {}, template } = resolveTemplateForBot(raw);
   const name = entry.name || raw;
 
   try {
@@ -670,15 +669,15 @@ app.get("/api/server-info/:name", async (req, res) => {
 
     const port = (entry.port !== undefined && entry.port !== null)
       ? entry.port
-      : (entry.template === "minecraft" ? 25565 : null);
+      : (template === "minecraft" ? 25565 : null);
 
     return res.json({
       name,
       start: entry.start || null,
       ip: ip || null,
       port,
-      template: entry.template || null,         // <<–– IMPORTANT
-      runtime: entry.runtime || null,
+      template: template || null,         // <<–– IMPORTANT
+      runtime: entry.runtime || meta.runtime || null,
       nodeId: entry.nodeId || entry.node || entry.node_id || null
     });
   } catch (e) {
@@ -686,15 +685,15 @@ app.get("/api/server-info/:name", async (req, res) => {
 
     const port = (entry.port !== undefined && entry.port !== null)
       ? entry.port
-      : (entry.template === "minecraft" ? 25565 : null);
+      : (template === "minecraft" ? 25565 : null);
 
     return res.json({
       name,
       start: entry.start || null,
       ip: entry.ip || null,
       port,
-      template: entry.template || null,         // <<–– ȘI AICI
-      runtime: entry.runtime || null,
+      template: template || null,         // <<–– ȘI AICI
+      runtime: entry.runtime || meta.runtime || null,
       nodeId: entry.nodeId || entry.node || entry.node_id || null
     });
   }
@@ -2067,7 +2066,11 @@ try {
 }
 
 function normalizeTemplateId(tpl){
-  return (tpl || '').toString().trim().toLowerCase();
+  const raw = (tpl || '').toString().trim().toLowerCase();
+  if (!raw) return '';
+  if (["discord-bot", "discord", "discord bot", "bot", "node", "nodejs", "python"].includes(raw)) return "discord-bot";
+  if (["mc", "minecraft"].includes(raw)) return "minecraft";
+  return raw;
 }
 
 function providerTemplates(provider){
@@ -2083,6 +2086,30 @@ function providerSupportsTemplate(provider, tpl){
   const normalized = normalizeTemplateId(tpl);
   if (!normalized) return true;
   return providerTemplates(provider).includes(normalized);
+}
+
+function readBotMeta(bot){
+  try {
+    const p = path.join(BOTS_DIR, bot, 'adpanel.json');
+    if (!fs.existsSync(p)) return null;
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch { return null; }
+}
+
+function resolveTemplateForBot(bot){
+  const entry = findServer(bot);
+  const meta = readBotMeta(bot) || {};
+
+  const explicit = normalizeTemplateId(entry?.template || meta.template || meta.type);
+  if (explicit) return { entry, meta, template: explicit };
+
+  const start = String(entry?.start || meta.start || '').toLowerCase();
+  if (start.endsWith('.jar')) return { entry, meta, template: 'minecraft' };
+  if (start.endsWith('.js') || start.endsWith('.ts') || start.endsWith('.py')) {
+    return { entry, meta, template: 'discord-bot' };
+  }
+
+  return { entry, meta, template: '' };
 }
 
 function providersForTemplate(tpl){
@@ -2762,13 +2789,12 @@ app.get('/api/servers/:bot/versions', (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
 
   const bot = req.params.bot;
-  const server = findServer(bot);
-
-  if (!server) {
+  const { entry, template } = resolveTemplateForBot(bot);
+  if (!entry && !fs.existsSync(botRoot(bot))) {
     return res.status(404).json({ error: 'server-not-found' });
   }
 
-  const providers = providersForTemplate(server.template).map(p => ({
+  const providers = providersForTemplate(template).map(p => ({
     id: p.id,
     name: p.name,
     description: p.description,
@@ -2784,12 +2810,12 @@ app.get('/api/servers/:bot/versions/:providerId', (req, res) => {
   const bot = req.params.bot;
   const providerId = req.params.providerId;
 
-  const server = findServer(bot);
-  if (!server) {
+  const { entry, template } = resolveTemplateForBot(bot);
+  if (!entry && !fs.existsSync(botRoot(bot))) {
     return res.status(404).json({ error: 'server-not-found' });
   }
 
-  const provider = providersForTemplate(server.template).find(p => p.id === providerId);
+  const provider = providersForTemplate(template).find(p => p.id === providerId);
 
   if (!provider) {
     return res.status(404).json({ error: 'provider-not-found' });
