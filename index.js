@@ -2820,6 +2820,51 @@ const extraEnv = {
   }
 });
 
+app.post("/create", async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).send("Not authenticated");
+
+  const { bot, type, name } = req.body || {};
+  const relPath = (req.body && typeof req.body.path !== "undefined") ? String(req.body.path) : "";
+
+  const normalizedType = String(type || "").trim().toLowerCase();
+  if (!bot || !normalizedType || !name) return res.status(400).send("Missing fields");
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).send("Not authorized");
+  }
+
+  if (normalizedType !== "file" && normalizedType !== "folder") {
+    return res.status(400).send("Invalid type");
+  }
+
+  const safeName = String(name).trim();
+  if (!safeName || safeName.includes("..") || /[\\/]/.test(safeName)) {
+    return res.status(400).send("Invalid name");
+  }
+
+  const root = path.join(BOTS_DIR, bot);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return res.status(404).send("Server not found");
+  }
+
+  const target = safeJoinLocal(root, path.join(relPath || "", safeName));
+  if (!target) return res.status(400).send("Invalid path");
+
+  if (fs.existsSync(target)) return res.status(400).send("Already exists");
+
+  try {
+    if (normalizedType === "folder") {
+      await fsp.mkdir(target, { recursive: true });
+    } else {
+      await fsp.mkdir(path.dirname(target), { recursive: true });
+      await fsp.writeFile(target, "", "utf8");
+    }
+    return res.json({ ok: true, path: path.relative(root, target) });
+  } catch (e) {
+    console.error("[create] failed:", e && e.message ? e.message : e);
+    return res.status(500).send("Create failed");
+  }
+});
+
 app.post("/rename", (req, res) => {
   const { bot, oldPath, newName } = req.body || {};
   if (!bot || !oldPath || !newName) return res.status(400).send("Missing fields");
