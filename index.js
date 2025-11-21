@@ -649,7 +649,10 @@ app.get("/api/server-info/:name", async (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
 
   const raw = String(req.params.name || "").trim();
-  const { entry = {}, meta = {}, template } = resolveTemplateForBot(raw);
+  const resolved = resolveTemplateForBot(raw) || {};
+  const entry = resolved.entry || {};
+  const meta = resolved.meta || {};
+  const template = resolved.template;
   const name = entry.name || raw;
 
   try {
