@@ -2370,6 +2370,9 @@ async function loadNodeVersions(){
 }
 
 async function changeNodeVersion(version){
+  const warning = 'Switching Node.js versions will delete all existing files on this server. Continue?';
+  if (!confirm(warning)) return;
+
   showProgressWheel(3, `Applying Node.js ${version}...`);
   try {
     const res = await fetch('/change-node-version', {

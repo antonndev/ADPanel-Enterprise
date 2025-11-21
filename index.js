@@ -537,6 +537,21 @@ function docker(args, opts = {}) {
   return spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"], ...opts });
 }
 function dockerCollect(args, opts = {}) { return execCollect("docker", args, opts); }
+async function isContainerRunning(name) {
+  try {
+    const res = await dockerCollect(["inspect", "-f", "{{.State.Running}}", name]);
+    return String(res.out || "").trim() === "true";
+  } catch {
+    return false;
+  }
+}
+function resolveNodeRuntimeImage(entry) {
+  const runtime = entry && entry.runtime ? entry.runtime : {};
+  return {
+    image: runtime.image || "node",
+    tag: runtime.tag || "20-alpine"
+  };
+}
 async function containerExists(name) { try { await dockerCollect(["inspect", name]); return true; } catch { return false; } }
 async function ensureNoContainer(name) { try { await dockerCollect(["rm", "-f", name]); } catch {} }
 async function pullImage(imageWithTag) {
@@ -733,7 +748,21 @@ const DOCKER_TEMPLATES = [
       ports: [],
       env: { NODE_ENV: "production", DISCORD_TOKEN: "" },
       volumes: ["{BOT_DIR}:/app"],
-      command: "node /app/index.js",
+      command: "sh -c \"cd /app && npm install && node /app/index.js\"",
+      restart: "unless-stopped"
+    }
+  },
+  {
+    id: "nodejs",
+    name: "Node.js",
+    description: "Node 20 runtime with /app mount and optional port mapping",
+    docker: {
+      image: "node",
+      tag: "20-alpine",
+      ports: [],
+      env: { NODE_ENV: "production" },
+      volumes: ["{BOT_DIR}:/app"],
+      command: "sh -c \"cd /app && npm install && node /app/index.js\"",
       restart: "unless-stopped"
     }
   },
@@ -1616,6 +1645,7 @@ async function applyNodeRuntimeChange(bot, version){
   const versionCfg = buildNodeVersionConfig(version, entry, meta);
   if (!versionCfg) return { status: 400, json: { error: 'invalid-node-version' } };
 
+  await wipeBotDirectory(bot);
   const port = clampAppPort(entry?.port ?? meta?.port ?? 3001, 3001);
   await ensureNodeScaffold(bot, port);
 
@@ -1645,7 +1675,7 @@ async function applyNodeRuntimeChange(bot, version){
     console.warn('[node-version] docker pull failed:', e && e.message);
   }
 
-  return { status: 200, json: { ok: true, message: `Node.js version switched to ${versionCfg.name}.`, runtime } };
+  return { status: 200, json: { ok: true, message: `Node.js version switched to ${versionCfg.name}. All existing files were removed.`, runtime } };
 }
 
 app.post('/api/servers/:bot/node-version', async (req, res) => {
@@ -2359,7 +2389,7 @@ function buildNodeVersionConfig(versionId, entry, meta){
     docker: {
       image: 'node',
       tag: `${clean}-alpine`,
-      command: `node /app/${startFile}`
+      command: `sh -c "cd /app && npm install && node /app/${startFile}"`
     }
   };
 }
@@ -2459,6 +2489,30 @@ async function wipeBotDirectory(bot){
     console.warn('[python-runtime] failed to recreate bot directory:', e && e.message);
     throw e;
   }
+}
+
+async function runOfflineNpmInstall(bot, command){
+  const entry = findServer(bot) || {};
+  if (isRemoteEntry(entry)) {
+    _emitLine(bot, "[ADPanel] npm install is not supported on remote nodes yet");
+    return;
+  }
+
+  const installCmd = (command && command.trim()) ? command.trim() : 'npm install';
+  const { image, tag } = resolveNodeRuntimeImage(entry);
+  const botDir = botRoot(bot);
+  const args = ['run', '--rm', '-v', `${botDir}:/app`, '-w', '/app', `${image}:${tag}`, 'sh', '-lc', `cd /app && ${installCmd}`];
+  const p = docker(args);
+  if (!p) {
+    _emitLine(bot, "[ADPanel] failed to start npm install");
+    return;
+  }
+  p.stdout.on('data', d => emitChunkLines(bot, d));
+  p.stderr.on('data', d => emitChunkLines(bot, d));
+  return new Promise(resolve => {
+    p.on('close', () => resolve());
+    p.on('error', () => resolve());
+  });
 }
 
 function readBotMeta(bot){
@@ -3571,17 +3625,32 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
     }
   });
 
-  socket.on("command", ({ bot, command }) => {
+  socket.on("command", async ({ bot, command }) => {
     if (bot) { try { socket.join(bot); } catch {} }
     if (!hasPerm(bot, "console_write")) return deny(bot);
-    if (!command || !command.trim()) return;
+    const trimmed = (command || '').toString().trim();
+    if (!trimmed) return;
 
     if (isMinecraftBot(bot)) {
       const cp = docker(["exec", "--user", "1000", bot, "mc-send-to-console", command]);
       cp.stdout.on("data", d => emitChunkLines(bot, d));
       cp.stderr.on("data", d => emitChunkLines(bot, d));
     } else {
-      const cp = docker(["exec", "-i", bot, "sh", "-lc", command]);
+      const entry = findServer(bot);
+      const isNpmInstall = /^npm\s+i(nstall)?(\s|$)/i.test(trimmed);
+
+      if (isNpmInstall && !await isContainerRunning(bot)) {
+        await runOfflineNpmInstall(bot, trimmed);
+        return;
+      }
+
+      if (isNpmInstall && isRemoteEntry(entry)) {
+        _emitLine(bot, "[ADPanel] npm install is not supported on remote nodes yet");
+        return;
+      }
+
+      const execCmd = (isNpmInstall ? `cd /app && ${trimmed}` : trimmed);
+      const cp = docker(["exec", "-i", bot, "sh", "-lc", execCmd]);
       cp.stdout.on("data", d => emitChunkLines(bot, d));
       cp.stderr.on("data", d => emitChunkLines(bot, d));
     }
