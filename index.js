@@ -649,8 +649,10 @@ app.get("/api/server-info/:name", async (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
 
   const raw = String(req.params.name || "").trim();
-  // folosim findServer ca să luăm exact intrarea din servers.json
-  const entry = findServer(raw) || {};
+  const resolved = resolveTemplateForBot(raw) || {};
+  const entry = resolved.entry || {};
+  const meta = resolved.meta || {};
+  const template = resolved.template;
   const name = entry.name || raw;
 
   try {
@@ -670,14 +672,15 @@ app.get("/api/server-info/:name", async (req, res) => {
 
     const port = (entry.port !== undefined && entry.port !== null)
       ? entry.port
-      : (entry.template === "minecraft" ? 25565 : null);
+      : (template === "minecraft" ? 25565 : null);
 
     return res.json({
       name,
       start: entry.start || null,
       ip: ip || null,
       port,
-      template: entry.template || null,         // <<–– IMPORTANT
+      template: template || null,         // <<–– IMPORTANT
+      runtime: entry.runtime || meta.runtime || null,
       nodeId: entry.nodeId || entry.node || entry.node_id || null
     });
   } catch (e) {
@@ -685,14 +688,15 @@ app.get("/api/server-info/:name", async (req, res) => {
 
     const port = (entry.port !== undefined && entry.port !== null)
       ? entry.port
-      : (entry.template === "minecraft" ? 25565 : null);
+      : (template === "minecraft" ? 25565 : null);
 
     return res.json({
       name,
       start: entry.start || null,
       ip: entry.ip || null,
       port,
-      template: entry.template || null,         // <<–– ȘI AICI
+      template: template || null,         // <<–– ȘI AICI
+      runtime: entry.runtime || meta.runtime || null,
       nodeId: entry.nodeId || entry.node || entry.node_id || null
     });
   }
@@ -1389,11 +1393,64 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
     });
 
     // 3) determinăm dacă serverul e pe nod sau local
-    const idx   = loadServersIndex(); // servers.json – array
-    const entry = Array.isArray(idx) ? idx.find(e => e && e.name === bot) : null;
+    const resolved = resolveTemplateForBot(bot) || {};
+    const entry = resolved.entry || null;
+    const meta = resolved.meta || {};
 
     const rawNodeId = entry && (entry.nodeId || entry.node || entry.id || entry.uuid || null);
     const ip        = entry && (entry.ip || entry.host || null);
+
+    const serverTemplate = normalizeTemplateId(resolved.template || entry?.template);
+
+    // === runtime selection pentru template-uri non-Minecraft (ex: Discord bot) ===
+    if (serverTemplate && serverTemplate !== 'minecraft') {
+      const providerCfg = findProviderConfig(providerId);
+      if (!providerCfg || !providerSupportsTemplate(providerCfg, serverTemplate)) {
+        return res.status(400).json({ ok: false, error: 'provider-not-supported' });
+      }
+      let versionCfg = findProviderVersionConfig(providerId, versionId);
+      if (!versionCfg && providerId === 'python') {
+        versionCfg = buildPythonVersionConfig(versionId, entry, meta);
+      }
+      if (!versionCfg) {
+        return res.status(404).json({ ok: false, error: 'version-not-found' });
+      }
+      if (isRemoteEntry(entry)) {
+        return res.status(400).json({ ok: false, error: 'runtime-change-remote-unsupported' });
+      }
+      const dockerCfg = versionCfg.docker || {};
+      if (!dockerCfg.image || !dockerCfg.tag) {
+        return res.status(400).json({ ok: false, error: 'missing-docker-config' });
+      }
+
+      const startFile = versionCfg.start || entry?.start || meta.start || 'index.js';
+
+      const runtime = {
+        providerId: providerCfg.id,
+        versionId: versionCfg.id || versionId,
+        image: dockerCfg.image,
+        tag: dockerCfg.tag,
+        command: dockerCfg.command || null,
+        env: dockerCfg.env || {},
+        volumes: dockerCfg.volumes || null
+      };
+
+      const updatedEntry = Object.assign({}, entry || {}, {
+        name: bot,
+        template: providerCfg.template || serverTemplate || 'discord-bot',
+        start: startFile,
+        runtime
+      });
+
+      upsertServerIndexEntry(updatedEntry);
+      try {
+        await dockerCollect(['pull', `${dockerCfg.image}:${dockerCfg.tag}`]);
+      } catch (e) {
+        console.warn('[apply] docker pull failed:', e && e.message);
+      }
+
+      return res.json({ ok: true, remote: false, msg: 'runtime-updated', runtime });
+    }
 
     const isRemoteNode = !!(entry && rawNodeId && rawNodeId !== 'local' && ip);
 
@@ -1456,6 +1513,66 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
   } catch (e) {
     console.error('apply-version error', e);
     return res.status(500).json({ ok: false, error: 'server-error' });
+  }
+});
+
+app.post('/change-version', async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
+
+  const bot = String(req.body?.bot || '').trim();
+  const version = req.body?.version;
+
+  if (!bot || !version) return res.status(400).json({ error: 'missing-params' });
+
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).json({ error: 'no access to server' });
+  }
+
+  try {
+    const resolved = resolveTemplateForBot(bot) || {};
+    const entry = resolved.entry || {};
+    const meta = resolved.meta || {};
+
+    if (!entry && !fs.existsSync(botRoot(bot))) {
+      return res.status(404).json({ error: 'server-not-found' });
+    }
+
+    if (isRemoteEntry(entry)) {
+      return res.status(400).json({ error: 'runtime-change-remote-unsupported' });
+    }
+
+    const versionCfg = buildPythonVersionConfig(version, entry, meta);
+    if (!versionCfg) return res.status(400).json({ error: 'invalid-python-version' });
+
+    const runtime = {
+      providerId: 'python',
+      versionId: version,
+      image: versionCfg.docker.image,
+      tag: versionCfg.docker.tag,
+      command: versionCfg.docker.command,
+      env: {},
+      volumes: null
+    };
+
+    const updatedEntry = Object.assign({}, entry || {}, {
+      name: bot,
+      template: 'discord-bot',
+      start: versionCfg.start,
+      runtime
+    });
+
+    upsertServerIndexEntry(updatedEntry);
+
+    try {
+      await dockerCollect(['pull', `${runtime.image}:${runtime.tag}`]);
+    } catch (e) {
+      console.warn('[change-version] docker pull failed:', e && e.message);
+    }
+
+    return res.json({ ok: true, message: `Python version switched to ${versionCfg.name}`, runtime });
+  } catch (e) {
+    console.error('[change-version] failed:', e && e.message);
+    return res.status(500).json({ error: 'server-error' });
   }
 });
 
@@ -2015,6 +2132,130 @@ try {
   versionsConfig = JSON.parse(rawVersions);
 } catch (e) {
   console.error('Cannot read versions.json:', e.message);
+}
+
+function normalizeTemplateId(tpl){
+  const raw = (tpl || '').toString().trim().toLowerCase();
+  if (!raw) return '';
+  if (["discord-bot", "discord", "discord bot", "bot", "node", "nodejs", "python"].includes(raw)) return "discord-bot";
+  if (["mc", "minecraft"].includes(raw)) return "minecraft";
+  return raw;
+}
+
+function providerTemplates(provider){
+  if (!provider) return [];
+  if (provider.templates && Array.isArray(provider.templates)) {
+    return provider.templates.map(normalizeTemplateId);
+  }
+  if (provider.template) return [normalizeTemplateId(provider.template)];
+  return ['minecraft'];
+}
+
+function providerSupportsTemplate(provider, tpl){
+  const normalized = normalizeTemplateId(tpl);
+  if (!normalized) return true;
+  return providerTemplates(provider).includes(normalized);
+}
+
+function sanitizePythonVersionTag(version){
+  const raw = (version || '').toString().trim();
+  if (!raw) return null;
+  const clean = raw.replace(/^v/, '');
+  if (!/^[A-Za-z0-9._-]+$/.test(clean)) return null;
+  return clean;
+}
+
+function inferPythonStart(entry, meta){
+  const candidates = [entry?.start, meta?.start, 'main.py'];
+  for (const c of candidates){
+    if (!c) continue;
+    const s = String(c).trim();
+    if (!s) continue;
+    if (s.toLowerCase().endsWith('.py')) return s;
+  }
+  return 'main.py';
+}
+
+function buildPythonVersionConfig(versionId, entry, meta){
+  const clean = sanitizePythonVersionTag(versionId);
+  if (!clean) return null;
+  const startFile = inferPythonStart(entry, meta);
+  return {
+    id: versionId,
+    name: clean,
+    label: `Python ${clean}`,
+    start: startFile,
+    docker: {
+      image: 'python',
+      tag: `${clean}-slim`,
+      command: `python /app/${startFile}`
+    }
+  };
+}
+
+function readBotMeta(bot){
+  try {
+    const p = path.join(BOTS_DIR, bot, 'adpanel.json');
+    if (!fs.existsSync(p)) return null;
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch { return null; }
+}
+
+function resolveTemplateForBot(bot){
+  const entry = findServer(bot);
+  const meta = readBotMeta(bot) || {};
+
+  const explicit = normalizeTemplateId(entry?.template || meta.template || meta.type);
+  if (explicit) return { entry, meta, template: explicit };
+
+  const start = String(entry?.start || meta.start || '').toLowerCase();
+  if (start.endsWith('.jar')) return { entry, meta, template: 'minecraft' };
+  if (start.endsWith('.js') || start.endsWith('.ts') || start.endsWith('.py')) {
+    return { entry, meta, template: 'discord-bot' };
+  }
+
+  return { entry, meta, template: '' };
+}
+
+function providersForTemplate(tpl){
+  const providers = Array.isArray(versionsConfig)
+    ? versionsConfig
+    : (versionsConfig.providers || []);
+  return providers.filter(p => providerSupportsTemplate(p, tpl));
+}
+
+async function fetchPythonTagsFromGitHub(){
+  const url = 'https://api.github.com/repos/python/cpython/tags';
+  return await fetchJson(url);
+}
+
+function mapPythonTagsToVersions(tags){
+  const list = Array.isArray(tags) ? tags : [];
+  return list.map(tag => {
+    const raw = (tag && tag.name) ? String(tag.name) : '';
+    const clean = sanitizePythonVersionTag(raw) || raw;
+    return {
+      id: raw,
+      name: clean,
+      label: `Python ${clean || raw || 'unknown'}`,
+      releaseDate: '',
+      tags: ['PYTHON']
+    };
+  });
+}
+
+function findProviderConfig(providerId){
+  const providers = Array.isArray(versionsConfig)
+    ? versionsConfig
+    : (versionsConfig.providers || []);
+  return providers.find(p => String(p.id) === String(providerId)) || null;
+}
+
+function findProviderVersionConfig(providerId, versionId){
+  const provider = findProviderConfig(providerId);
+  if (!provider) return null;
+  const versions = Array.isArray(provider.versions) ? provider.versions : [];
+  return versions.find(v => String(v.id || v.name || v.version) === String(versionId)) || null;
 }
 
 function stripMinecraftColors(s) {
@@ -2673,18 +2914,12 @@ app.get('/api/servers/:bot/versions', (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
 
   const bot = req.params.bot;
-  const server = findServer(bot);
-
-  if (!server) {
+  const { entry, template } = resolveTemplateForBot(bot);
+  if (!entry && !fs.existsSync(botRoot(bot))) {
     return res.status(404).json({ error: 'server-not-found' });
   }
 
-const isMc = !!server.template && String(server.template).trim().toLowerCase() === 'minecraft';
-if (!isMc) {
-  return res.status(400).json({ error: 'not-minecraft-template' });
-}
-
-  const providers = (versionsConfig.providers || []).map(p => ({
+  const providers = providersForTemplate(template).map(p => ({
     id: p.id,
     name: p.name,
     description: p.description,
@@ -2694,27 +2929,40 @@ if (!isMc) {
   return res.json({ providers });
 });
 
-app.get('/api/servers/:bot/versions/:providerId', (req, res) => {
+app.get('/api/servers/:bot/versions/:providerId', async (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
 
   const bot = req.params.bot;
   const providerId = req.params.providerId;
 
-  const server = findServer(bot);
-  if (!server) {
+  const resolved = resolveTemplateForBot(bot);
+  const entry = resolved.entry;
+  const template = resolved.template;
+
+  if (!entry && !fs.existsSync(botRoot(bot))) {
     return res.status(404).json({ error: 'server-not-found' });
   }
 
-  if (server.template !== 'minecraft') {
-    return res.status(400).json({ error: 'not-minecraft-template' });
-  }
-
-  const provider = (versionsConfig.providers || []).find(
-    p => p.id === providerId
-  );
+  const provider = providersForTemplate(template).find(p => p.id === providerId);
 
   if (!provider) {
     return res.status(404).json({ error: 'provider-not-found' });
+  }
+
+  if (provider.id === 'python') {
+    try {
+      const tags = await fetchPythonTagsFromGitHub();
+      const versions = mapPythonTagsToVersions(tags);
+      return res.json({
+        provider: provider.id,
+        displayName: provider.name,
+        description: provider.description,
+        versions
+      });
+    } catch (e) {
+      console.warn('[versions] failed to load python tags:', e && e.message);
+      return res.status(502).json({ error: 'python-versions-unavailable' });
+    }
   }
 
   return res.json({
@@ -2844,6 +3092,11 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
               if (overrideDocker.env) {
                 tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
               }
+              if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
+              if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
+              if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
+              if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
+              if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
             }
 
             runArgs = buildArgsFromTemplate(bot, tplCopy, botDir);
