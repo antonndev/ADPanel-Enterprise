@@ -1393,13 +1393,14 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
     });
 
     // 3) determinăm dacă serverul e pe nod sau local
-    const idx   = loadServersIndex(); // servers.json – array
-    const entry = Array.isArray(idx) ? idx.find(e => e && e.name === bot) : null;
+    const resolved = resolveTemplateForBot(bot) || {};
+    const entry = resolved.entry || null;
+    const meta = resolved.meta || {};
 
     const rawNodeId = entry && (entry.nodeId || entry.node || entry.id || entry.uuid || null);
     const ip        = entry && (entry.ip || entry.host || null);
 
-    const serverTemplate = normalizeTemplateId(entry && entry.template);
+    const serverTemplate = normalizeTemplateId(resolved.template || entry?.template);
 
     // === runtime selection pentru template-uri non-Minecraft (ex: Discord bot) ===
     if (serverTemplate && serverTemplate !== 'minecraft') {
@@ -1407,7 +1408,10 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
       if (!providerCfg || !providerSupportsTemplate(providerCfg, serverTemplate)) {
         return res.status(400).json({ ok: false, error: 'provider-not-supported' });
       }
-      const versionCfg = findProviderVersionConfig(providerId, versionId);
+      let versionCfg = findProviderVersionConfig(providerId, versionId);
+      if (!versionCfg && providerId === 'python') {
+        versionCfg = buildPythonVersionConfig(versionId, entry, meta);
+      }
       if (!versionCfg) {
         return res.status(404).json({ ok: false, error: 'version-not-found' });
       }
@@ -1418,6 +1422,8 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
       if (!dockerCfg.image || !dockerCfg.tag) {
         return res.status(400).json({ ok: false, error: 'missing-docker-config' });
       }
+
+      const startFile = versionCfg.start || entry?.start || meta.start || 'index.js';
 
       const runtime = {
         providerId: providerCfg.id,
@@ -1432,7 +1438,7 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
       const updatedEntry = Object.assign({}, entry || {}, {
         name: bot,
         template: providerCfg.template || serverTemplate || 'discord-bot',
-        start: versionCfg.start || entry?.start || 'index.js',
+        start: startFile,
         runtime
       });
 
@@ -1507,6 +1513,66 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
   } catch (e) {
     console.error('apply-version error', e);
     return res.status(500).json({ ok: false, error: 'server-error' });
+  }
+});
+
+app.post('/change-version', async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
+
+  const bot = String(req.body?.bot || '').trim();
+  const version = req.body?.version;
+
+  if (!bot || !version) return res.status(400).json({ error: 'missing-params' });
+
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).json({ error: 'no access to server' });
+  }
+
+  try {
+    const resolved = resolveTemplateForBot(bot) || {};
+    const entry = resolved.entry || {};
+    const meta = resolved.meta || {};
+
+    if (!entry && !fs.existsSync(botRoot(bot))) {
+      return res.status(404).json({ error: 'server-not-found' });
+    }
+
+    if (isRemoteEntry(entry)) {
+      return res.status(400).json({ error: 'runtime-change-remote-unsupported' });
+    }
+
+    const versionCfg = buildPythonVersionConfig(version, entry, meta);
+    if (!versionCfg) return res.status(400).json({ error: 'invalid-python-version' });
+
+    const runtime = {
+      providerId: 'python',
+      versionId: version,
+      image: versionCfg.docker.image,
+      tag: versionCfg.docker.tag,
+      command: versionCfg.docker.command,
+      env: {},
+      volumes: null
+    };
+
+    const updatedEntry = Object.assign({}, entry || {}, {
+      name: bot,
+      template: 'discord-bot',
+      start: versionCfg.start,
+      runtime
+    });
+
+    upsertServerIndexEntry(updatedEntry);
+
+    try {
+      await dockerCollect(['pull', `${runtime.image}:${runtime.tag}`]);
+    } catch (e) {
+      console.warn('[change-version] docker pull failed:', e && e.message);
+    }
+
+    return res.json({ ok: true, message: `Python version switched to ${versionCfg.name}`, runtime });
+  } catch (e) {
+    console.error('[change-version] failed:', e && e.message);
+    return res.status(500).json({ error: 'server-error' });
   }
 });
 
@@ -2091,6 +2157,42 @@ function providerSupportsTemplate(provider, tpl){
   return providerTemplates(provider).includes(normalized);
 }
 
+function sanitizePythonVersionTag(version){
+  const raw = (version || '').toString().trim();
+  if (!raw) return null;
+  const clean = raw.replace(/^v/, '');
+  if (!/^[A-Za-z0-9._-]+$/.test(clean)) return null;
+  return clean;
+}
+
+function inferPythonStart(entry, meta){
+  const candidates = [entry?.start, meta?.start, 'main.py'];
+  for (const c of candidates){
+    if (!c) continue;
+    const s = String(c).trim();
+    if (!s) continue;
+    if (s.toLowerCase().endsWith('.py')) return s;
+  }
+  return 'main.py';
+}
+
+function buildPythonVersionConfig(versionId, entry, meta){
+  const clean = sanitizePythonVersionTag(versionId);
+  if (!clean) return null;
+  const startFile = inferPythonStart(entry, meta);
+  return {
+    id: versionId,
+    name: clean,
+    label: `Python ${clean}`,
+    start: startFile,
+    docker: {
+      image: 'python',
+      tag: `${clean}-slim`,
+      command: `python /app/${startFile}`
+    }
+  };
+}
+
 function readBotMeta(bot){
   try {
     const p = path.join(BOTS_DIR, bot, 'adpanel.json');
@@ -2120,6 +2222,26 @@ function providersForTemplate(tpl){
     ? versionsConfig
     : (versionsConfig.providers || []);
   return providers.filter(p => providerSupportsTemplate(p, tpl));
+}
+
+async function fetchPythonTagsFromGitHub(){
+  const url = 'https://api.github.com/repos/python/cpython/tags';
+  return await fetchJson(url);
+}
+
+function mapPythonTagsToVersions(tags){
+  const list = Array.isArray(tags) ? tags : [];
+  return list.map(tag => {
+    const raw = (tag && tag.name) ? String(tag.name) : '';
+    const clean = sanitizePythonVersionTag(raw) || raw;
+    return {
+      id: raw,
+      name: clean,
+      label: `Python ${clean || raw || 'unknown'}`,
+      releaseDate: '',
+      tags: ['PYTHON']
+    };
+  });
 }
 
 function findProviderConfig(providerId){
@@ -2807,13 +2929,16 @@ app.get('/api/servers/:bot/versions', (req, res) => {
   return res.json({ providers });
 });
 
-app.get('/api/servers/:bot/versions/:providerId', (req, res) => {
+app.get('/api/servers/:bot/versions/:providerId', async (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
 
   const bot = req.params.bot;
   const providerId = req.params.providerId;
 
-  const { entry, template } = resolveTemplateForBot(bot);
+  const resolved = resolveTemplateForBot(bot);
+  const entry = resolved.entry;
+  const template = resolved.template;
+
   if (!entry && !fs.existsSync(botRoot(bot))) {
     return res.status(404).json({ error: 'server-not-found' });
   }
@@ -2822,6 +2947,22 @@ app.get('/api/servers/:bot/versions/:providerId', (req, res) => {
 
   if (!provider) {
     return res.status(404).json({ error: 'provider-not-found' });
+  }
+
+  if (provider.id === 'python') {
+    try {
+      const tags = await fetchPythonTagsFromGitHub();
+      const versions = mapPythonTagsToVersions(tags);
+      return res.json({
+        provider: provider.id,
+        displayName: provider.name,
+        description: provider.description,
+        versions
+      });
+    } catch (e) {
+      console.warn('[versions] failed to load python tags:', e && e.message);
+      return res.status(502).json({ error: 'python-versions-unavailable' });
+    }
   }
 
   return res.json({

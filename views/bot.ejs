@@ -1373,7 +1373,12 @@
         const dock = document.getElementById('dockStore');
         const tabs = document.getElementById('storeTabs');
         if (!btn && !dock) return;
-        const t = serverInfo ? normalizeTemplate(serverInfo.template) : null;
+        const inferredTpl = serverInfo && normalizeTemplate(
+          serverInfo.template ||
+          (serverInfo.runtime ? 'discord-bot' : '') ||
+          ((serverInfo.start || '').match(/\.(js|ts|py)$/i) ? 'discord-bot' : '')
+        );
+        const t = inferredTpl || null;
         const shouldShow = !t || t === 'minecraft' || t === 'discord-bot';
         const allowPlugins = !t || t === 'minecraft';
         [btn, dock].forEach(el => { if (el) el.classList.toggle('hidden', !shouldShow); });
@@ -2280,7 +2285,7 @@ async function fetchSpigotVersions() {
 
 async function fetchStoreVersions(providerId){
   const pid = (providerId || '').toString().toLowerCase();
-  
+
   if (pid.includes('vanilla'))  return await fetchVanillaVersions();
   if (pid.includes('paper'))   return await fetchPapermcVersions();
   if (pid.includes('purpur'))  return await fetchPurpurVersions();
@@ -2289,11 +2294,58 @@ async function fetchStoreVersions(providerId){
   if (pid.includes('folia'))  return await fetchFoliaVersions();
   if (pid.includes('leaves'))  return await fetchLeavesVersions();
   if (pid.includes('spigot'))  return await fetchSpigotVersions();
+  if (pid.includes('python')) return await fetchPythonVersions();
 
   // fallback la backend custom (dacă ai alți provideri în versions.json)
   const res = await fetch(`/api/servers/${encodeURIComponent(bot)}/versions/${encodeURIComponent(providerId)}`);
   if (!res.ok) throw new Error('Failed to load provider versions');
   return await res.json();
+}
+
+async function fetchPythonVersions(){
+  const list = document.getElementById("list");
+
+  const response = await fetch("https://api.github.com/repos/python/cpython/tags");
+  if (!response.ok) throw new Error('Failed to load Python versions');
+  const tags = await response.json();
+
+  const versions = (tags || []).map(tag => {
+    const raw = (tag && tag.name) ? String(tag.name) : '';
+    const clean = raw.replace(/^v/, '');
+    return {
+      id: raw,
+      name: clean,
+      label: `Python ${clean || raw || 'unknown'}`,
+      releaseDate: '',
+      tags: ['PYTHON']
+    };
+  });
+
+  if (list) {
+    list.innerHTML = versions.map(v => `
+        <div class="item">
+            <b>${v.label}</b>
+            <br><br>
+            <button onclick="changeVersion('${v.id}')">
+                Schimba containerul in versiunea ${v.id}
+            </button>
+        </div>
+    `).join("");
+  }
+
+  return { versions };
+}
+
+async function changeVersion(version) {
+  const res = await fetch(`/change-version`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bot, version })
+  });
+
+  const result = await res.json();
+  alert(result.message || result.error || 'Unknown response');
+  try { await loadServerInfo(); updateStoreVisibility(); } catch {}
 }
 
       async function renderStoreProvidersView(providersFromServer = null){
