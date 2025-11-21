@@ -2295,6 +2295,7 @@ async function fetchStoreVersions(providerId){
   if (pid.includes('leaves'))  return await fetchLeavesVersions();
   if (pid.includes('spigot'))  return await fetchSpigotVersions();
   if (pid.includes('python')) return await fetchPythonVersions();
+  if (pid.includes('node')) return await loadNodeVersions();
 
   // fallback la backend custom (dacă ai alți provideri în versions.json)
   const res = await fetch(`/api/servers/${encodeURIComponent(bot)}/versions/${encodeURIComponent(providerId)}`);
@@ -2334,6 +2335,58 @@ async function fetchPythonVersions(){
   }
 
   return { versions };
+}
+
+async function loadNodeVersions(){
+  const list = document.getElementById("list");
+
+  const res = await fetch("https://nodejs.org/dist/index.json");
+  if (!res.ok) throw new Error('Failed to load Node.js versions');
+  const versionsRaw = await res.json();
+
+  const versions = (versionsRaw || [])
+    .filter(v => v && typeof v.version === 'string' && /^v?\d+\.\d+\.\d+/.test(v.version))
+    .map(v => ({
+      id: v.version,
+      name: v.version.replace(/^v/, ''),
+      label: v.version,
+      releaseDate: v.date || '',
+      tags: v.lts ? ['LTS'] : ['LATEST']
+    }));
+
+  if (list) {
+    list.innerHTML = versions.map(v => `
+        <div class="item">
+            <b>${v.label}</b>  
+            <br><br>
+            <button onclick="changeNodeVersion('${v.id}')">
+                Schimba containerul in ${v.id}
+            </button>
+        </div>
+    `).join("");
+  }
+
+  return { versions };
+}
+
+async function changeNodeVersion(version){
+  showProgressWheel(3, `Applying Node.js ${version}...`);
+  try {
+    const res = await fetch('/change-node-version', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version, bot })
+    });
+
+    const result = await res.json();
+    if (!res.ok || !result?.ok) throw new Error(result?.error || `HTTP ${res.status}`);
+    alert(result.message || 'Node.js version changed');
+    try { await loadServerInfo(); updateStoreVisibility(); } catch {}
+  } catch (e) {
+    alert('Failed to change Node.js version: ' + (e?.message || e));
+  } finally {
+    setTimeout(hideProgressWheel, 450);
+  }
 }
 
 async function changeVersion(version, opts = {}) {
@@ -2421,6 +2474,10 @@ async function changeVersion(version, opts = {}) {
         const pid = (providerId || '').toString().toLowerCase();
         if (pid === 'python') {
           await changeVersion(versionId);
+          return;
+        }
+        if (pid.includes('node')) {
+          await changeNodeVersion(versionId);
           return;
         }
         showProgressWheel(3, `Applying ${label}...`);

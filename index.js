@@ -738,6 +738,20 @@ const DOCKER_TEMPLATES = [
     }
   },
   {
+    id: "nodejs",
+    name: "Node.js",
+    description: "Node 20 runtime with /app mount and optional port mapping",
+    docker: {
+      image: "node",
+      tag: "20-alpine",
+      ports: [],
+      env: { NODE_ENV: "production" },
+      volumes: ["{BOT_DIR}:/app"],
+      command: "node /app/index.js",
+      restart: "unless-stopped"
+    }
+  },
+  {
     id: "vanilla",
     name: "Empty (custom)",
     description: "Alpine + sleep 3600",
@@ -1411,6 +1425,8 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
       let versionCfg = findProviderVersionConfig(providerId, versionId);
       if (!versionCfg && providerId === 'python') {
         versionCfg = buildPythonVersionConfig(versionId, entry, meta);
+      } else if (!versionCfg && providerId === 'nodejs') {
+        versionCfg = buildNodeVersionConfig(versionId, entry, meta);
       }
       if (!versionCfg) {
         return res.status(404).json({ ok: false, error: 'version-not-found' });
@@ -1533,6 +1549,7 @@ async function applyPythonRuntimeChange(bot, version){
   if (!versionCfg) return { status: 400, json: { error: 'invalid-python-version' } };
 
   await wipeBotDirectory(bot);
+  await ensurePythonScaffold(bot);
 
   const runtime = {
     providerId: 'python',
@@ -1583,6 +1600,75 @@ app.post('/api/servers/:bot/python-version', async (req, res) => {
   }
 });
 
+async function applyNodeRuntimeChange(bot, version){
+  const resolved = resolveTemplateForBot(bot) || {};
+  const entry = resolved.entry || {};
+  const meta = resolved.meta || {};
+
+  if (!entry && !fs.existsSync(botRoot(bot))) {
+    return { status: 404, json: { error: 'server-not-found' } };
+  }
+
+  if (isRemoteEntry(entry)) {
+    return { status: 400, json: { error: 'runtime-change-remote-unsupported' } };
+  }
+
+  const versionCfg = buildNodeVersionConfig(version, entry, meta);
+  if (!versionCfg) return { status: 400, json: { error: 'invalid-node-version' } };
+
+  const port = clampAppPort(entry?.port ?? meta?.port ?? 3001, 3001);
+  await ensureNodeScaffold(bot, port);
+
+  const runtime = {
+    providerId: 'nodejs',
+    versionId: version,
+    image: versionCfg.docker.image,
+    tag: versionCfg.docker.tag,
+    command: versionCfg.docker.command,
+    env: {},
+    volumes: null
+  };
+
+  const updatedEntry = Object.assign({}, entry || {}, {
+    name: bot,
+    template: entry?.template || 'nodejs',
+    start: versionCfg.start,
+    runtime,
+    port
+  });
+
+  upsertServerIndexEntry(updatedEntry);
+
+  try {
+    await dockerCollect(['pull', `${runtime.image}:${runtime.tag}`]);
+  } catch (e) {
+    console.warn('[node-version] docker pull failed:', e && e.message);
+  }
+
+  return { status: 200, json: { ok: true, message: `Node.js version switched to ${versionCfg.name}.`, runtime } };
+}
+
+app.post('/api/servers/:bot/node-version', async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
+
+  const bot = String(req.params?.bot || '').trim();
+  const version = req.body?.version;
+
+  if (!bot || !version) return res.status(400).json({ error: 'missing-params' });
+
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).json({ error: 'no access to server' });
+  }
+
+  try {
+    const result = await applyNodeRuntimeChange(bot, version);
+    return res.status(result.status).json(result.json);
+  } catch (e) {
+    console.error('[node-version] failed:', e && e.message);
+    return res.status(500).json({ error: 'server-error' });
+  }
+});
+
 app.post('/change-version', async (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
 
@@ -1600,6 +1686,27 @@ app.post('/change-version', async (req, res) => {
     return res.status(result.status).json(result.json);
   } catch (e) {
     console.error('[change-version] failed:', e && e.message);
+    return res.status(500).json({ error: 'server-error' });
+  }
+});
+
+app.post('/change-node-version', async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
+
+  const bot = String(req.body?.bot || '').trim();
+  const version = req.body?.version;
+
+  if (!bot || !version) return res.status(400).json({ error: 'missing-params' });
+
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).json({ error: 'no access to server' });
+  }
+
+  try {
+    const result = await applyNodeRuntimeChange(bot, version);
+    return res.status(result.status).json(result.json);
+  } catch (e) {
+    console.error('[change-node-version] failed:', e && e.message);
     return res.status(500).json({ error: 'server-error' });
   }
 });
@@ -2193,6 +2300,14 @@ function sanitizePythonVersionTag(version){
   return clean;
 }
 
+function sanitizeNodeVersionTag(version){
+  const raw = (version || '').toString().trim();
+  if (!raw) return null;
+  const clean = raw.replace(/^v/, '');
+  if (!/^[0-9]+(?:\.[0-9]+){1,2}(?:[-a-zA-Z0-9.]*)?$/.test(clean)) return null;
+  return clean;
+}
+
 function inferPythonStart(entry, meta){
   const candidates = [entry?.start, meta?.start, 'main.py'];
   for (const c of candidates){
@@ -2202,6 +2317,17 @@ function inferPythonStart(entry, meta){
     if (s.toLowerCase().endsWith('.py')) return s;
   }
   return 'main.py';
+}
+
+function inferNodeStart(entry, meta){
+  const candidates = [entry?.start, meta?.start, 'index.js'];
+  for (const c of candidates){
+    if (!c) continue;
+    const s = String(c).trim();
+    if (!s) continue;
+    if (s.toLowerCase().endsWith('.js')) return s;
+  }
+  return 'index.js';
 }
 
 function buildPythonVersionConfig(versionId, entry, meta){
@@ -2219,6 +2345,105 @@ function buildPythonVersionConfig(versionId, entry, meta){
       command: `python /app/${startFile}`
     }
   };
+}
+
+function buildNodeVersionConfig(versionId, entry, meta){
+  const clean = sanitizeNodeVersionTag(versionId);
+  if (!clean) return null;
+  const startFile = inferNodeStart(entry, meta);
+  return {
+    id: versionId,
+    name: clean,
+    label: `Node.js ${clean}`,
+    start: startFile,
+    docker: {
+      image: 'node',
+      tag: `${clean}-alpine`,
+      command: `node /app/${startFile}`
+    }
+  };
+}
+
+const PYTHON_MAIN_TEMPLATE = `def greet(name="World"):
+    return f"Hello, {name}!"
+
+if __name__ == "__main__":
+    print("--- Starting main.py execution ---")
+
+    user_name = "ADPanel"
+    message_1 = greet(user_name)
+    print(f"Message 1: {message_1}")
+
+    message_2 = greet()
+    print(f"Message 2: {message_2}")
+
+    print("--- Execution finished ---")
+`;
+
+function buildNodeIndexTemplate(port){
+  const p = clampAppPort(port, 3001);
+  return `const express = require("express");
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("Hello World from ADPanel!");
+});
+
+const PORT = ${p};
+
+app.listen(PORT, () => {
+  console.log(\`Server running on http://localhost:${p}\`);
+});
+`;
+}
+
+async function ensurePythonScaffold(bot){
+  const botDir = botRoot(bot);
+  await fsp.mkdir(botDir, { recursive: true });
+  const mainPath = path.join(botDir, 'main.py');
+  try {
+    await fsp.writeFile(mainPath, PYTHON_MAIN_TEMPLATE, 'utf8');
+  } catch (e) {
+    console.warn('[python-runtime] failed to scaffold main.py:', e && e.message);
+  }
+}
+
+async function ensureNodeScaffold(bot, port){
+  const botDir = botRoot(bot);
+  await fsp.mkdir(botDir, { recursive: true });
+  const idxPath = path.join(botDir, 'index.js');
+  const pkgPath = path.join(botDir, 'package.json');
+  const desiredContent = buildNodeIndexTemplate(port);
+
+  try {
+    if (!fs.existsSync(idxPath)) {
+      await fsp.writeFile(idxPath, desiredContent, 'utf8');
+    } else {
+      const current = await fsp.readFile(idxPath, 'utf8');
+      if (current.includes('Hello World from ADPanel!')) {
+        await fsp.writeFile(idxPath, desiredContent, 'utf8');
+      }
+    }
+  } catch (e) {
+    console.warn('[node-runtime] failed to ensure index.js:', e && e.message);
+  }
+
+  const pkg = {
+    name: path.basename(botDir),
+    private: true,
+    version: '1.0.0',
+    main: 'index.js',
+    scripts: { start: 'node index.js' },
+    dependencies: { express: '^4.19.2' }
+  };
+
+  try {
+    if (!fs.existsSync(pkgPath)) {
+      await fsp.writeFile(pkgPath, JSON.stringify(pkg, null, 2), 'utf8');
+    }
+  } catch (e) {
+    console.warn('[node-runtime] failed to scaffold package.json:', e && e.message);
+  }
 }
 
 async function wipeBotDirectory(bot){
@@ -2285,6 +2510,30 @@ function mapPythonTagsToVersions(tags){
       tags: ['PYTHON']
     };
   });
+}
+
+async function fetchNodeVersionsIndex(){
+  const url = 'https://nodejs.org/dist/index.json';
+  return await fetchJson(url);
+}
+
+function mapNodeVersionsToList(list){
+  const arr = Array.isArray(list) ? list : [];
+  return arr
+    .filter(v => v && typeof v.version === 'string' && /^v?\d+\.\d+\.\d+/.test(v.version))
+    .map(v => {
+      const clean = sanitizeNodeVersionTag(v.version) || v.version;
+      const tags = [];
+      if (v.lts) tags.push('LTS');
+      if (!v.lts) tags.push('LATEST');
+      return {
+        id: v.version,
+        name: clean,
+        label: `Node.js ${clean || v.version}`,
+        releaseDate: v.date || '',
+        tags
+      };
+    });
 }
 
 function findProviderConfig(providerId){
@@ -2537,6 +2786,13 @@ function clampPort(p) {
   if (n < 1 || n > 35650) return 25565;
   return n;
 }
+
+function clampAppPort(p, fallback = 3001) {
+  const n = Number(p);
+  if (!Number.isInteger(n)) return fallback;
+  if (n < 1 || n > 65535) return fallback;
+  return n;
+}
 function setMinecraftServerPort(botDir, port) {
   const propsPath = path.join(botDir, "server.properties");
   let content = "";
@@ -2679,7 +2935,7 @@ app.post("/api/servers/create", async (req, res) => {
     // porțiuni comune pentru indexare + ACL
     function startFileFor(templateId) {
       if (templateId === "minecraft") return "server.jar";
-      if (templateId === "discord-bot") return "index.js";
+      if (templateId === "discord-bot" || templateId === "nodejs") return "index.js";
       return null;
     }
 
@@ -2706,7 +2962,9 @@ app.post("/api/servers/create", async (req, res) => {
       } catch {}
 
       try {
-        const savedPort = templateId === "minecraft" ? clampPort(hostPortRaw) : null;
+        const savedPort = templateId === "minecraft"
+          ? clampPort(hostPortRaw)
+          : (templateId === "nodejs" ? clampAppPort(hostPortRaw, 3001) : null);
         const entry = {
           name,
           template: templateId,
@@ -2774,10 +3032,14 @@ const extraEnv = {
       runTemplateContainerNow(name, "minecraft", botDir, extraEnv, overrideDocker);
 
       startFileForIndex = "server.jar";
-    } else if (templateId === "discord-bot") {
-      writeDiscordBotScaffold(botDir);
+    } else if (templateId === "discord-bot" || templateId === "nodejs") {
+      const hostPort = clampAppPort(hostPortRaw, 3001);
+      savedPort = hostPort;
+
+      await ensureNodeScaffold(name, hostPort);
       await pullImage("node:20-alpine");
-      runTemplateContainerNow(name, "discord-bot", botDir, {});
+      const overrideDocker = { ports: [`${hostPort}:${hostPort}`] };
+      runTemplateContainerNow(name, templateId === "nodejs" ? "nodejs" : "discord-bot", botDir, {}, overrideDocker);
       startFileForIndex = "index.js";
     } else if (templateId === "vanilla") {
       await pullImage("alpine:latest");
@@ -3050,6 +3312,22 @@ app.get('/api/servers/:bot/versions/:providerId', async (req, res) => {
     } catch (e) {
       console.warn('[versions] failed to load python tags:', e && e.message);
       return res.status(502).json({ error: 'python-versions-unavailable' });
+    }
+  }
+
+  if (provider.id === 'nodejs') {
+    try {
+      const idx = await fetchNodeVersionsIndex();
+      const versions = mapNodeVersionsToList(idx);
+      return res.json({
+        provider: provider.id,
+        displayName: provider.name,
+        description: provider.description,
+        versions
+      });
+    } catch (e) {
+      console.warn('[versions] failed to load node versions:', e && e.message);
+      return res.status(502).json({ error: 'node-versions-unavailable' });
     }
   }
 
