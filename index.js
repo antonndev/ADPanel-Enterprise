@@ -1516,6 +1516,73 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
   }
 });
 
+async function applyPythonRuntimeChange(bot, version){
+  const resolved = resolveTemplateForBot(bot) || {};
+  const entry = resolved.entry || {};
+  const meta = resolved.meta || {};
+
+  if (!entry && !fs.existsSync(botRoot(bot))) {
+    return { status: 404, json: { error: 'server-not-found' } };
+  }
+
+  if (isRemoteEntry(entry)) {
+    return { status: 400, json: { error: 'runtime-change-remote-unsupported' } };
+  }
+
+  const versionCfg = buildPythonVersionConfig(version, entry, meta);
+  if (!versionCfg) return { status: 400, json: { error: 'invalid-python-version' } };
+
+  await wipeBotDirectory(bot);
+
+  const runtime = {
+    providerId: 'python',
+    versionId: version,
+    image: versionCfg.docker.image,
+    tag: versionCfg.docker.tag,
+    command: versionCfg.docker.command,
+    env: {},
+    volumes: null
+  };
+
+  const updatedEntry = Object.assign({}, entry || {}, {
+    name: bot,
+    template: 'python',
+    start: versionCfg.start,
+    runtime
+  });
+
+  upsertServerIndexEntry(updatedEntry);
+
+  try {
+    await dockerCollect(['pull', `${runtime.image}:${runtime.tag}`]);
+  } catch (e) {
+    console.warn('[python-version] docker pull failed:', e && e.message);
+  }
+
+  return { status: 200, json: { ok: true, message: `Python version switched to ${versionCfg.name}. All existing files were removed.`, runtime } };
+}
+
+app.post('/api/servers/:bot/python-version', async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
+
+  const bot = String(req.params?.bot || '').trim();
+  const version = req.body?.version;
+
+  if (!bot || !version) return res.status(400).json({ error: 'missing-params' });
+
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).json({ error: 'no access to server' });
+  }
+
+  try {
+    const result = await applyPythonRuntimeChange(bot, version);
+    return res.status(result.status).json(result.json);
+  } catch (e) {
+    console.error('[python-version] failed:', e && e.message);
+    return res.status(500).json({ error: 'server-error' });
+  }
+});
+
 app.post('/change-version', async (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
 
@@ -1529,47 +1596,8 @@ app.post('/change-version', async (req, res) => {
   }
 
   try {
-    const resolved = resolveTemplateForBot(bot) || {};
-    const entry = resolved.entry || {};
-    const meta = resolved.meta || {};
-
-    if (!entry && !fs.existsSync(botRoot(bot))) {
-      return res.status(404).json({ error: 'server-not-found' });
-    }
-
-    if (isRemoteEntry(entry)) {
-      return res.status(400).json({ error: 'runtime-change-remote-unsupported' });
-    }
-
-    const versionCfg = buildPythonVersionConfig(version, entry, meta);
-    if (!versionCfg) return res.status(400).json({ error: 'invalid-python-version' });
-
-    const runtime = {
-      providerId: 'python',
-      versionId: version,
-      image: versionCfg.docker.image,
-      tag: versionCfg.docker.tag,
-      command: versionCfg.docker.command,
-      env: {},
-      volumes: null
-    };
-
-    const updatedEntry = Object.assign({}, entry || {}, {
-      name: bot,
-      template: 'discord-bot',
-      start: versionCfg.start,
-      runtime
-    });
-
-    upsertServerIndexEntry(updatedEntry);
-
-    try {
-      await dockerCollect(['pull', `${runtime.image}:${runtime.tag}`]);
-    } catch (e) {
-      console.warn('[change-version] docker pull failed:', e && e.message);
-    }
-
-    return res.json({ ok: true, message: `Python version switched to ${versionCfg.name}`, runtime });
+    const result = await applyPythonRuntimeChange(bot, version);
+    return res.status(result.status).json(result.json);
   } catch (e) {
     console.error('[change-version] failed:', e && e.message);
     return res.status(500).json({ error: 'server-error' });
@@ -2191,6 +2219,21 @@ function buildPythonVersionConfig(versionId, entry, meta){
       command: `python /app/${startFile}`
     }
   };
+}
+
+async function wipeBotDirectory(bot){
+  const dir = botRoot(bot);
+  try {
+    await fsp.rm(dir, { recursive: true, force: true });
+  } catch (e) {
+    console.warn('[python-runtime] failed to remove bot directory before recreate:', e && e.message);
+  }
+  try {
+    await fsp.mkdir(dir, { recursive: true });
+  } catch (e) {
+    console.warn('[python-runtime] failed to recreate bot directory:', e && e.message);
+    throw e;
+  }
 }
 
 function readBotMeta(bot){

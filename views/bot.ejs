@@ -2336,16 +2336,26 @@ async function fetchPythonVersions(){
   return { versions };
 }
 
-async function changeVersion(version) {
-  const res = await fetch(`/change-version`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+async function changeVersion(version, opts = {}) {
+  const warning = 'Switching Python versions will delete all existing files on this server. Continue?';
+  if (!opts?.skipConfirm && !confirm(warning)) return;
+  showProgressWheel(3, `Applying Python ${version}...`);
+  try {
+    const res = await fetch(`/api/servers/${encodeURIComponent(bot)}/python-version`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bot, version })
-  });
+    });
 
-  const result = await res.json();
-  alert(result.message || result.error || 'Unknown response');
-  try { await loadServerInfo(); updateStoreVisibility(); } catch {}
+    const result = await res.json();
+    if (!res.ok || !result?.ok) throw new Error(result?.error || `HTTP ${res.status}`);
+    alert(result.message || 'Python version changed');
+    try { await loadServerInfo(); updateStoreVisibility(); } catch {}
+  } catch (e) {
+    alert('Failed to change Python version: ' + (e?.message || e));
+  } finally {
+    setTimeout(hideProgressWheel, 450);
+  }
 }
 
       async function renderStoreProvidersView(providersFromServer = null){
@@ -2408,6 +2418,11 @@ async function changeVersion(version) {
         if (!hasPerm('server_start') && !hasPerm('files_create')) { alert('Unauthorized'); return; }
         const label = displayLabel || versionId;
         if (!confirm(`Install "${label}" on "${bot}"?`)) return;
+        const pid = (providerId || '').toString().toLowerCase();
+        if (pid === 'python') {
+          await changeVersion(versionId);
+          return;
+        }
         showProgressWheel(3, `Applying ${label}...`);
         try{
           const payload = { providerId, versionId };
@@ -2483,7 +2498,11 @@ async function changeVersion(version) {
 
           const note = document.createElement('div');
           note.className = 'store-note';
-          note.textContent = 'NOTE: Click on a version to install it into the server (ONE-TAP)';
+          if ((provider.id || provider.provider || '').toString().toLowerCase() === 'python') {
+            note.textContent = 'WARNING: Switching Python runtimes will delete all existing files on this server.';
+          } else {
+            note.textContent = 'NOTE: Click on a version to install it into the server (ONE-TAP)';
+          }
           wrapper.appendChild(note);
 
           if (!versions.length){
