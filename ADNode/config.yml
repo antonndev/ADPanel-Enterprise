@@ -1,0 +1,20 @@
+debug: false
+uuid: ec41c6f6-763c-4f6e-816e-0ac21c50f52d
+token_id: tok_c6dbf3749c62
+token: vIPHd9pG39xMx4x7zvxKUGq0BhBC3Le8
+api:
+  host: 0.0.0.0
+  port: 8080
+  ssl:
+    enabled: false
+    cert: ""
+    key: ""
+  upload_limit: 1024
+system:
+  data: /var/lib/node/volumes
+  sftp:
+    bind_port: 2022
+allowed_mounts: []
+panel:
+  url: http://cdn.antonn.ro:3000
+  node_id: ec41c6f6-763c-4f6e-816e-0ac21c50f52d
