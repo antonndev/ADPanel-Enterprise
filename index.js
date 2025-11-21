@@ -3631,6 +3631,19 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
                 if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
                 if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
               }
+              tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, { PORT: String(mappedPort) });
+
+              if (overrideDocker && typeof overrideDocker === "object") {
+                if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
+                if (overrideDocker.env) {
+                  tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
+                }
+                if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
+                if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
+                if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
+                if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
+                if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
+              }
               if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
               if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
               if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
