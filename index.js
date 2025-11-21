@@ -3631,6 +3631,11 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
                 if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
                 if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
               }
+              if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
+              if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
+              if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
+              if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
+              if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
             }
 
             runArgs = buildArgsFromTemplate(bot, tplCopy, botDir);
