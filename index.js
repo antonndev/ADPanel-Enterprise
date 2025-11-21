@@ -1447,15 +1447,13 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
       if (!versionCfg) {
         return res.status(404).json({ ok: false, error: 'version-not-found' });
       }
-      if (isRemoteEntry(entry)) {
-        return res.status(400).json({ ok: false, error: 'runtime-change-remote-unsupported' });
-      }
       const dockerCfg = versionCfg.docker || {};
       if (!dockerCfg.image || !dockerCfg.tag) {
         return res.status(400).json({ ok: false, error: 'missing-docker-config' });
       }
 
       const startFile = versionCfg.start || entry?.start || meta.start || 'index.js';
+      const port = clampAppPort(entry?.port ?? meta?.port ?? 3001, 3001);
 
       const runtime = {
         providerId: providerCfg.id,
@@ -1471,8 +1469,38 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
         name: bot,
         template: providerCfg.template || serverTemplate || 'discord-bot',
         start: startFile,
-        runtime
+        runtime,
+        port
       });
+
+      if (isRemoteEntry(entry)) {
+        const forwardUrl = `http://${ip}:${NODE_AGENT_PORT}/v1/servers/${encodeURIComponent(bot)}/runtime`;
+        const payload = {
+          runtime,
+          template: updatedEntry.template,
+          start: startFile,
+          port
+        };
+
+        console.log('[apply] forward runtime -> node', { forwardUrl, nodeId: rawNodeId, template: updatedEntry.template, version: runtime.versionId });
+        const r = await httpRequestJson(
+          forwardUrl,
+          'POST',
+          { 'Content-Type': 'application/json' },
+          payload,
+          60_000
+        );
+
+        if (r.status !== 200 || !(r.json && r.json.ok)) {
+          return res.status(502).json({
+            ok: false,
+            error: (r.json && (r.json.detail || r.json.error)) || `node-runtime-forward-failed-${r.status}`
+          });
+        }
+
+        upsertServerIndexEntry(updatedEntry);
+        return res.json({ ok: true, remote: true, msg: 'runtime-updated', runtime });
+      }
 
       upsertServerIndexEntry(updatedEntry);
       try {
@@ -1557,16 +1585,11 @@ async function applyPythonRuntimeChange(bot, version){
     return { status: 404, json: { error: 'server-not-found' } };
   }
 
-  if (isRemoteEntry(entry)) {
-    return { status: 400, json: { error: 'runtime-change-remote-unsupported' } };
-  }
-
   const versionCfg = buildPythonVersionConfig(version, entry, meta);
   if (!versionCfg) return { status: 400, json: { error: 'invalid-python-version' } };
 
-  await wipeBotDirectory(bot);
-  await ensurePythonScaffold(bot);
-
+  const startFile = versionCfg.start;
+  const port = clampAppPort(entry?.port ?? meta?.port ?? 3001, 3001);
   const runtime = {
     providerId: 'python',
     versionId: version,
@@ -1580,9 +1603,28 @@ async function applyPythonRuntimeChange(bot, version){
   const updatedEntry = Object.assign({}, entry || {}, {
     name: bot,
     template: 'python',
-    start: versionCfg.start,
-    runtime
+    start: startFile,
+    runtime,
+    port
   });
+
+  if (isRemoteEntry(entry)) {
+    const rawNodeId = entry && (entry.nodeId || entry.node || entry.id || entry.uuid || null);
+    const ip = entry && (entry.ip || entry.host || null);
+    if (!rawNodeId || !ip) return { status: 400, json: { error: 'runtime-change-remote-unsupported' } };
+
+    const forwardUrl = `http://${ip}:${NODE_AGENT_PORT}/v1/servers/${encodeURIComponent(bot)}/runtime`;
+    const payload = { runtime, template: 'python', start: startFile, port };
+    const r = await httpRequestJson(forwardUrl, 'POST', { 'Content-Type': 'application/json' }, payload, 60_000);
+    if (r.status !== 200 || !(r.json && r.json.ok)) {
+      return { status: 502, json: { error: (r.json && (r.json.detail || r.json.error)) || `node-runtime-forward-failed-${r.status}` } };
+    }
+    upsertServerIndexEntry(updatedEntry);
+    return { status: 200, json: { ok: true, remote: true, message: `Python version switched to ${versionCfg.name}. All existing files were removed.`, runtime } };
+  }
+
+  await wipeBotDirectory(bot);
+  await ensurePythonScaffold(bot);
 
   upsertServerIndexEntry(updatedEntry);
 
@@ -1625,17 +1667,11 @@ async function applyNodeRuntimeChange(bot, version){
     return { status: 404, json: { error: 'server-not-found' } };
   }
 
-  if (isRemoteEntry(entry)) {
-    return { status: 400, json: { error: 'runtime-change-remote-unsupported' } };
-  }
-
   const versionCfg = buildNodeVersionConfig(version, entry, meta);
   if (!versionCfg) return { status: 400, json: { error: 'invalid-node-version' } };
 
-  await wipeBotDirectory(bot);
   const port = clampAppPort(entry?.port ?? meta?.port ?? 3001, 3001);
-  await ensureNodeScaffold(bot, port);
-
+  const startFile = versionCfg.start;
   const runtime = {
     providerId: 'nodejs',
     versionId: version,
@@ -1649,10 +1685,28 @@ async function applyNodeRuntimeChange(bot, version){
   const updatedEntry = Object.assign({}, entry || {}, {
     name: bot,
     template: entry?.template || 'nodejs',
-    start: versionCfg.start,
+    start: startFile,
     runtime,
     port
   });
+
+  if (isRemoteEntry(entry)) {
+    const rawNodeId = entry && (entry.nodeId || entry.node || entry.id || entry.uuid || null);
+    const ip = entry && (entry.ip || entry.host || null);
+    if (!rawNodeId || !ip) return { status: 400, json: { error: 'runtime-change-remote-unsupported' } };
+
+    const forwardUrl = `http://${ip}:${NODE_AGENT_PORT}/v1/servers/${encodeURIComponent(bot)}/runtime`;
+    const payload = { runtime, template: updatedEntry.template, start: startFile, port };
+    const r = await httpRequestJson(forwardUrl, 'POST', { 'Content-Type': 'application/json' }, payload, 60_000);
+    if (r.status !== 200 || !(r.json && r.json.ok)) {
+      return { status: 502, json: { error: (r.json && (r.json.detail || r.json.error)) || `node-runtime-forward-failed-${r.status}` } };
+    }
+    upsertServerIndexEntry(updatedEntry);
+    return { status: 200, json: { ok: true, remote: true, message: `Node.js version switched to ${versionCfg.name}. All existing files were removed.`, runtime } };
+  }
+
+  await wipeBotDirectory(bot);
+  await ensureNodeScaffold(bot, port);
 
   upsertServerIndexEntry(updatedEntry);
 
