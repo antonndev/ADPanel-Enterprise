@@ -3126,16 +3126,18 @@ async function changeVersion(version, opts = {}) {
         if(!selected) return alert('No script selected to run');
         statusLabel.textContent='running'; const lower=selected.toLowerCase();
         const template = serverInfo ? normalizeTemplate(serverInfo.template) : null;
-        if(template === 'discord-bot'){
+        const hostPort = Number(serverInfo && serverInfo.port ? serverInfo.port : 3001) || 3001;
+        if(template === 'discord-bot' || template === 'nodejs'){
           const runtime = (serverInfo && serverInfo.runtime) || {};
           const overrides={
             image: runtime.image || 'node',
             tag: runtime.tag || '20-alpine',
             command: runtime.command || `node /app/${selected}`,
-            env: runtime.env || {},
-            volumes: runtime.volumes || ['{BOT_DIR}:/app']
+            env: Object.assign({}, runtime.env || {}, { PORT: String(hostPort) }),
+            volumes: runtime.volumes || ['{BOT_DIR}:/app'],
+            ports: runtime.ports || [`${hostPort}:${hostPort}`]
           };
-          apiAction({ bot, cmd:'run', templateId:'discord-bot', docker: overrides })
+          apiAction({ bot, cmd:'run', templateId: template === 'nodejs' ? 'nodejs' : 'discord-bot', docker: overrides, port: hostPort })
             .catch(err=>alert('Run failed: ' + (err.message||err)));
           attachLogStreamIfRemote();
           return;

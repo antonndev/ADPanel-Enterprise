@@ -767,20 +767,6 @@ const DOCKER_TEMPLATES = [
     }
   },
   {
-    id: "nodejs",
-    name: "Node.js",
-    description: "Node 20 runtime with /app mount and optional port mapping",
-    docker: {
-      image: "node",
-      tag: "20-alpine",
-      ports: [],
-      env: { NODE_ENV: "production" },
-      volumes: ["{BOT_DIR}:/app"],
-      command: "node /app/index.js",
-      restart: "unless-stopped"
-    }
-  },
-  {
     id: "vanilla",
     name: "Empty (custom)",
     description: "Alpine + sleep 3600",
@@ -3403,7 +3389,12 @@ io.on("connection", (socket) => {
     const name = (botName || "").toString().trim();
     if (!name) return;
     try { socket.join(name); } catch (_) {}
-});
+    try {
+      if (buffers[name] && buffers[name].length) {
+        socket.emit("output", buffers[name].join("\n") + "\n");
+      }
+    } catch {}
+  });
   // helpers vizibile DOAR pentru conexiunea curentă
   function deny(botName, msg = "Permission denied") {
     io.to(botName).emit("output", msg);
@@ -3507,10 +3498,24 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
                 CUSTOM_SERVER: "/data/server.jar",
                 SERVER_PORT: String(hostPort)
               });
-            } else if (overrideDocker && typeof overrideDocker === "object") {
-              if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
-              if (overrideDocker.env) {
-                tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
+            } else {
+              const portFromEntry = entry && entry.port ? clampAppPort(entry.port, 3001) : null;
+              const mappedPort = clampAppPort(port || portFromEntry || 3001, 3001);
+              if (!tplCopy.docker.ports || tplCopy.docker.ports.length === 0) {
+                tplCopy.docker.ports = [`${mappedPort}:${mappedPort}`];
+              }
+              tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, { PORT: String(mappedPort) });
+
+              if (overrideDocker && typeof overrideDocker === "object") {
+                if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
+                if (overrideDocker.env) {
+                  tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
+                }
+                if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
+                if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
+                if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
+                if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
+                if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
               }
               if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
               if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
