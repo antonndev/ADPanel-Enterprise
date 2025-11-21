@@ -136,6 +136,78 @@
       "description": "The official SpigotMC jar with basic features",
       "logo": "https://avatars.githubusercontent.com/u/4350249?s=200&v=4",
       "versions": []
+    },
+    {
+      "id": "nodejs",
+      "template": "discord-bot",
+      "name": "Node.js",
+      "description": "Official Node.js images for Discord bots.",
+      "logo": "https://nodejs.org/static/images/logo.svg",
+      "versions": [
+        {
+          "id": "node-18",
+          "name": "18",
+          "label": "Node.js 18 (LTS)",
+          "releaseDate": "2024-04-23",
+          "tags": ["LTS"],
+          "docker": { "image": "node", "tag": "18-alpine", "command": "node /app/index.js" },
+          "start": "index.js"
+        },
+        {
+          "id": "node-20",
+          "name": "20",
+          "label": "Node.js 20 (Active LTS)",
+          "releaseDate": "2024-10-08",
+          "tags": ["LTS", "RECOMMENDED"],
+          "docker": { "image": "node", "tag": "20-alpine", "command": "node /app/index.js" },
+          "start": "index.js"
+        },
+        {
+          "id": "node-22",
+          "name": "22",
+          "label": "Node.js 22 (Current)",
+          "releaseDate": "2025-04-23",
+          "tags": ["LATEST"],
+          "docker": { "image": "node", "tag": "22-alpine", "command": "node /app/index.js" },
+          "start": "index.js"
+        }
+      ]
+    },
+    {
+      "id": "python",
+      "template": "discord-bot",
+      "name": "Python",
+      "description": "Python runtimes for Discord bots.",
+      "logo": "https://www.python.org/static/community_logos/python-logo-master-v3-TM.png",
+      "versions": [
+        {
+          "id": "python-3.10",
+          "name": "3.10",
+          "label": "Python 3.10",
+          "releaseDate": "2023-12-05",
+          "tags": ["LTS"],
+          "docker": { "image": "python", "tag": "3.10-slim", "command": "python /app/main.py" },
+          "start": "main.py"
+        },
+        {
+          "id": "python-3.11",
+          "name": "3.11",
+          "label": "Python 3.11",
+          "releaseDate": "2024-10-01",
+          "tags": ["STABLE"],
+          "docker": { "image": "python", "tag": "3.11-slim", "command": "python /app/main.py" },
+          "start": "main.py"
+        },
+        {
+          "id": "python-3.12",
+          "name": "3.12",
+          "label": "Python 3.12",
+          "releaseDate": "2025-02-25",
+          "tags": ["LATEST"],
+          "docker": { "image": "python", "tag": "3.12-slim", "command": "python /app/main.py" },
+          "start": "main.py"
+        }
+      ]
     }
   ]
 }
