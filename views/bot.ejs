@@ -1368,9 +1368,12 @@
         const tabs = document.getElementById('storeTabs');
         if (!btn && !dock) return;
         const t = serverInfo ? normalizeTemplate(serverInfo.template) : null;
-        const shouldShow = !t || t === 'minecraft';
+        const shouldShow = !t || t === 'minecraft' || t === 'discord-bot';
+        const allowPlugins = !t || t === 'minecraft';
         [btn, dock].forEach(el => { if (el) el.classList.toggle('hidden', !shouldShow); });
         if (tabs) tabs.classList.toggle('hidden', !shouldShow);
+        if (storeTabPlugins) storeTabPlugins.classList.toggle('hidden', !allowPlugins);
+        if (!allowPlugins && currentStoreTab === 'plugins') setActiveStoreTab('versions');
       }
 
       function setActiveStoreTab(tab){
@@ -1378,8 +1381,16 @@
         if (storeTabVersions) storeTabVersions.classList.toggle('active', tab === 'versions');
         if (storeTabPlugins) storeTabPlugins.classList.toggle('active', tab === 'plugins');
         if (storeSubtitle){
-          if (tab === 'versions') storeSubtitle.textContent = 'Choose your core distribution and version.';
-          else storeSubtitle.textContent = 'Browse and install plugins from Modrinth.';
+          const tpl = serverInfo ? normalizeTemplate(serverInfo.template) : null;
+          if (tab === 'versions') {
+            storeSubtitle.textContent = (tpl === 'minecraft')
+              ? 'Choose your core distribution and version.'
+              : 'Choose the runtime/version for your bot container.';
+          } else if (tpl === 'minecraft') {
+            storeSubtitle.textContent = 'Browse and install plugins from Modrinth.';
+          } else {
+            storeSubtitle.textContent = '';
+          }
         }
       }
 
@@ -1397,18 +1408,16 @@
         try {
           const r = await fetch(`/api/servers/${encodeURIComponent(bot)}/versions`);
           if (!r.ok) {
-            const j = await r.json().catch(() => ({}));
-            if (j && j.error === 'not-minecraft-template') {
-              closeStoreModal();
-              const t = serverInfo && serverInfo.template;
-              alert(`Store is available only for Minecraft template servers (template: ${JSON.stringify(String(t||'').trim())}).`);
-              return;
-            }
             storeContent.innerHTML = `<div class="store-error">Failed to load providers (${r.status})</div>`;
             return;
           }
           const data = await r.json();
-          await renderStoreProvidersView(Array.isArray(data.providers) ? data.providers : []);
+          const providers = Array.isArray(data.providers) ? data.providers : [];
+          if (!providers.length) {
+            storeContent.innerHTML = '<div class="store-empty">No providers configured for this template.</div>';
+            return;
+          }
+          await renderStoreProvidersView(providers);
         } catch (e) {
           storeContent.innerHTML = `<div class="store-error">Failed to load providers</div>`;
         }
@@ -2354,6 +2363,7 @@ async function fetchStoreVersions(providerId){
             const msg = (j && (j.detail || j.error)) ? (j.detail || j.error) : `HTTP ${r.status}`;
             throw new Error(msg);
           }
+          try { await loadServerInfo(); updateStoreVisibility(); } catch {}
         } catch(e){
           setProgress(0, 'Apply failed');
           alert('Apply failed: ' + (e && e.message ? e.message : e));
@@ -2437,7 +2447,9 @@ async function fetchStoreVersions(providerId){
               const parts = [];
               if (v.mcVersion) parts.push(`MC ${v.mcVersion}`);
               if (v.releaseDate) parts.push(v.releaseDate);
-              vs.textContent = parts.join(' • ');
+              if (!parts.length && v.name) parts.push(String(v.name));
+              const detail = parts.join(' • ');
+              vs.textContent = detail || (v.description || '');
               meta.appendChild(vn);
               meta.appendChild(vs);
               const tags = document.createElement('div');
@@ -2973,6 +2985,21 @@ async function fetchStoreVersions(providerId){
         const selected=savedStartup||scriptSelect.value||fallback;
         if(!selected) return alert('No script selected to run');
         statusLabel.textContent='running'; const lower=selected.toLowerCase();
+        const template = serverInfo ? normalizeTemplate(serverInfo.template) : null;
+        if(template === 'discord-bot'){
+          const runtime = (serverInfo && serverInfo.runtime) || {};
+          const overrides={
+            image: runtime.image || 'node',
+            tag: runtime.tag || '20-alpine',
+            command: runtime.command || `node /app/${selected}`,
+            env: runtime.env || {},
+            volumes: runtime.volumes || ['{BOT_DIR}:/app']
+          };
+          apiAction({ bot, cmd:'run', templateId:'discord-bot', docker: overrides })
+            .catch(err=>alert('Run failed: ' + (err.message||err)));
+          attachLogStreamIfRemote();
+          return;
+        }
         if(lower.endsWith('.jar')){
           const overrides={ ports:['25565:25565'], env:{EULA:'TRUE',TYPE:'CUSTOM',CUSTOM_SERVER:`/data/${selected}`}, volumes:['{BOT_DIR}:/data'], restart:'unless-stopped' };
           apiAction({ bot, cmd:'run', templateId:'minecraft', docker: overrides }).catch(err=>alert('Run failed: ' + (err.message||err)));

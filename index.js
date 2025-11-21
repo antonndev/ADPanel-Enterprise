@@ -678,6 +678,7 @@ app.get("/api/server-info/:name", async (req, res) => {
       ip: ip || null,
       port,
       template: entry.template || null,         // <<–– IMPORTANT
+      runtime: entry.runtime || null,
       nodeId: entry.nodeId || entry.node || entry.node_id || null
     });
   } catch (e) {
@@ -693,6 +694,7 @@ app.get("/api/server-info/:name", async (req, res) => {
       ip: entry.ip || null,
       port,
       template: entry.template || null,         // <<–– ȘI AICI
+      runtime: entry.runtime || null,
       nodeId: entry.nodeId || entry.node || entry.node_id || null
     });
   }
@@ -1395,6 +1397,53 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
     const rawNodeId = entry && (entry.nodeId || entry.node || entry.id || entry.uuid || null);
     const ip        = entry && (entry.ip || entry.host || null);
 
+    const serverTemplate = normalizeTemplateId(entry && entry.template);
+
+    // === runtime selection pentru template-uri non-Minecraft (ex: Discord bot) ===
+    if (serverTemplate && serverTemplate !== 'minecraft') {
+      const providerCfg = findProviderConfig(providerId);
+      if (!providerCfg || !providerSupportsTemplate(providerCfg, serverTemplate)) {
+        return res.status(400).json({ ok: false, error: 'provider-not-supported' });
+      }
+      const versionCfg = findProviderVersionConfig(providerId, versionId);
+      if (!versionCfg) {
+        return res.status(404).json({ ok: false, error: 'version-not-found' });
+      }
+      if (isRemoteEntry(entry)) {
+        return res.status(400).json({ ok: false, error: 'runtime-change-remote-unsupported' });
+      }
+      const dockerCfg = versionCfg.docker || {};
+      if (!dockerCfg.image || !dockerCfg.tag) {
+        return res.status(400).json({ ok: false, error: 'missing-docker-config' });
+      }
+
+      const runtime = {
+        providerId: providerCfg.id,
+        versionId: versionCfg.id || versionId,
+        image: dockerCfg.image,
+        tag: dockerCfg.tag,
+        command: dockerCfg.command || null,
+        env: dockerCfg.env || {},
+        volumes: dockerCfg.volumes || null
+      };
+
+      const updatedEntry = Object.assign({}, entry || {}, {
+        name: bot,
+        template: providerCfg.template || serverTemplate || 'discord-bot',
+        start: versionCfg.start || entry?.start || 'index.js',
+        runtime
+      });
+
+      upsertServerIndexEntry(updatedEntry);
+      try {
+        await dockerCollect(['pull', `${dockerCfg.image}:${dockerCfg.tag}`]);
+      } catch (e) {
+        console.warn('[apply] docker pull failed:', e && e.message);
+      }
+
+      return res.json({ ok: true, remote: false, msg: 'runtime-updated', runtime });
+    }
+
     const isRemoteNode = !!(entry && rawNodeId && rawNodeId !== 'local' && ip);
 
     if (isRemoteNode) {
@@ -2015,6 +2064,46 @@ try {
   versionsConfig = JSON.parse(rawVersions);
 } catch (e) {
   console.error('Cannot read versions.json:', e.message);
+}
+
+function normalizeTemplateId(tpl){
+  return (tpl || '').toString().trim().toLowerCase();
+}
+
+function providerTemplates(provider){
+  if (!provider) return [];
+  if (provider.templates && Array.isArray(provider.templates)) {
+    return provider.templates.map(normalizeTemplateId);
+  }
+  if (provider.template) return [normalizeTemplateId(provider.template)];
+  return ['minecraft'];
+}
+
+function providerSupportsTemplate(provider, tpl){
+  const normalized = normalizeTemplateId(tpl);
+  if (!normalized) return true;
+  return providerTemplates(provider).includes(normalized);
+}
+
+function providersForTemplate(tpl){
+  const providers = Array.isArray(versionsConfig)
+    ? versionsConfig
+    : (versionsConfig.providers || []);
+  return providers.filter(p => providerSupportsTemplate(p, tpl));
+}
+
+function findProviderConfig(providerId){
+  const providers = Array.isArray(versionsConfig)
+    ? versionsConfig
+    : (versionsConfig.providers || []);
+  return providers.find(p => String(p.id) === String(providerId)) || null;
+}
+
+function findProviderVersionConfig(providerId, versionId){
+  const provider = findProviderConfig(providerId);
+  if (!provider) return null;
+  const versions = Array.isArray(provider.versions) ? provider.versions : [];
+  return versions.find(v => String(v.id || v.name || v.version) === String(versionId)) || null;
 }
 
 function stripMinecraftColors(s) {
@@ -2679,12 +2768,7 @@ app.get('/api/servers/:bot/versions', (req, res) => {
     return res.status(404).json({ error: 'server-not-found' });
   }
 
-const isMc = !!server.template && String(server.template).trim().toLowerCase() === 'minecraft';
-if (!isMc) {
-  return res.status(400).json({ error: 'not-minecraft-template' });
-}
-
-  const providers = (versionsConfig.providers || []).map(p => ({
+  const providers = providersForTemplate(server.template).map(p => ({
     id: p.id,
     name: p.name,
     description: p.description,
@@ -2705,13 +2789,7 @@ app.get('/api/servers/:bot/versions/:providerId', (req, res) => {
     return res.status(404).json({ error: 'server-not-found' });
   }
 
-  if (server.template !== 'minecraft') {
-    return res.status(400).json({ error: 'not-minecraft-template' });
-  }
-
-  const provider = (versionsConfig.providers || []).find(
-    p => p.id === providerId
-  );
+  const provider = providersForTemplate(server.template).find(p => p.id === providerId);
 
   if (!provider) {
     return res.status(404).json({ error: 'provider-not-found' });
@@ -2844,6 +2922,11 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
               if (overrideDocker.env) {
                 tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
               }
+              if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
+              if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
+              if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
+              if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
+              if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
             }
 
             runArgs = buildArgsFromTemplate(bot, tplCopy, botDir);
