@@ -48,6 +48,7 @@ const STYLE_CSS = path.join(PUBLIC_DIR, "style.css");
 const CONFIG_FILE = path.join(__dirname, "config.json");
 const NODE_AGENT_PORT = parseInt(process.env.NODE_AGENT_PORT || '8080', 10);
 const LOCAL_NODE_TOKEN = process.env.NODE_AGENT_TOKEN || process.env.NODE_TOKEN || null;
+const NODE_VOLUME_ROOT = "/var/lib/node/volumes/volumes";
 const USER_ACCESS_FILE = path.join(__dirname, "user-access.json");
 const USERS_FILE = path.join(__dirname, "user.json");
 const remoteLogClients = {};
@@ -1783,6 +1784,33 @@ function safeJoinLocal(base, rel) {
   return safeJoinAndCheck(base, normalizeRelPath(rel));
 }
 
+function safeJoinUnix(baseDir, relPath) {
+  const cleanBase = String(baseDir || "").trim();
+  if (!cleanBase) throw new Error("invalid-base");
+  const rel = String(relPath || "").replace(/\\+/g, "/").replace(/^\/+/, "");
+  const normalized = path.posix.normalize(`/${rel}`).replace(/^\/+/, "");
+  if (normalized.includes("../")) throw new Error("invalid-path");
+  return path.posix.join(cleanBase, normalized);
+}
+
+async function nodeFsPost(node, endpoint, payload, timeoutMs = 20000) {
+  const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
+  if (!baseUrl) return { status: 0, json: null };
+  const headers = Object.assign({ "Content-Type": "application/json" }, nodeAuthHeadersFor(node, true));
+  return httpRequestJson(`${baseUrl}${endpoint}`, "POST", headers, payload, timeoutMs);
+}
+
+function resolveRemoteFsContext(botName) {
+  const entry = findServer(botName);
+  if (!isRemoteEntry(entry)) return { remote: false };
+  const node = findNodeByIdOrName(entry.nodeId);
+  if (!node) return { remote: false };
+  const safeName = sanitizeServerName(entry.name || botName);
+  if (!safeName) return { remote: false };
+  const baseDir = `${NODE_VOLUME_ROOT}/${safeName}`;
+  return { remote: true, node, baseDir };
+}
+
 async function extractZipFile(filePath, dest) {
   return new Promise((resolve, reject) => {
     try {
@@ -1932,6 +1960,26 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       try { fs.unlinkSync(uploadedPath); } catch (e) {}
       return res.status(400).json({ error: "Invalid bot name" });
     }
+    const remoteCtx = resolveRemoteFsContext(bot);
+    if (remoteCtx.remote) {
+      try {
+        const targetDir = safeJoinUnix(remoteCtx.baseDir, relPath || "");
+        const payload = {
+          dir: targetDir,
+          filename: originalName,
+          data_b64: fs.readFileSync(uploadedPath).toString("base64")
+        };
+        const { status, json } = await nodeFsPost(remoteCtx.node, "/v1/fs/uploadRaw", payload, 120000);
+        try { fs.unlinkSync(uploadedPath); } catch (e) {}
+        if (status !== 200 || !json || !json.ok) return res.status(502).json({ error: "node_upload_failed" });
+        return res.json({ ok: true, msg: "Uploaded to remote node", path: path.posix.join(relPath || "", originalName) });
+      } catch (e) {
+        try { fs.unlinkSync(uploadedPath); } catch (e2) {}
+        console.error("[upload->remote] failed:", e && e.message ? e.message : e);
+        return res.status(500).json({ error: "Failed to upload to node" });
+      }
+    }
+
     const base = path.resolve(BOTS_DIR);
     const targetDir = relPath ? path.join(BOTS_DIR, bot, relPath) : path.join(BOTS_DIR, bot);
     const resolvedTarget = path.resolve(targetDir);
@@ -3143,6 +3191,27 @@ app.post("/create", async (req, res) => {
     return res.status(400).send("Invalid name");
   }
 
+  const remoteCtx = resolveRemoteFsContext(bot);
+
+  if (remoteCtx.remote) {
+    try {
+      const relativePosix = path.posix.join(relPath || "", safeName);
+      const target = safeJoinUnix(remoteCtx.baseDir, relativePosix);
+
+      const payload = normalizedType === "folder"
+        ? { path: safeJoinUnix(target, ".keep"), content: "", encoding: "utf8" }
+        : { path: target, content: "", encoding: "utf8" };
+
+      const { status, json } = await nodeFsPost(remoteCtx.node, "/v1/fs/write", payload);
+      if (status !== 200 || !json || !json.ok) throw new Error("remote-create-failed");
+
+      return res.json({ ok: true, path: relativePosix });
+    } catch (e) {
+      console.error("[create] remote failed:", e && e.message ? e.message : e);
+      return res.status(500).send("Create failed");
+    }
+  }
+
   const root = path.join(BOTS_DIR, bot);
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
     return res.status(404).send("Server not found");
@@ -3173,6 +3242,26 @@ app.post("/rename", (req, res) => {
   const safeNewName = String(newName).trim();
   if (safeNewName === "" || safeNewName.includes("..") || safeNewName.includes("/") || safeNewName.includes("\\")) {
     return res.status(400).send("Invalid new name");
+  }
+  const remoteCtx = resolveRemoteFsContext(bot);
+  if (remoteCtx.remote) {
+    const relative = path.posix.join(path.posix.dirname(path.posix.join(oldPath)), safeNewName);
+    try {
+      const src = safeJoinUnix(remoteCtx.baseDir, oldPath);
+      const dest = safeJoinUnix(remoteCtx.baseDir, relative);
+      nodeFsPost(remoteCtx.node, "/v1/fs/rename", { src, dest })
+        .then(({ status, json }) => {
+          if (status !== 200 || !json || !json.ok) return res.status(500).send("Rename failed");
+          return res.json({ ok: true, path: relative });
+        })
+        .catch((e) => {
+          console.error("[rename] remote failed:", e && e.message ? e.message : e);
+          return res.status(500).send("Rename failed");
+        });
+    } catch (e) {
+      return res.status(400).send("Invalid path");
+    }
+    return;
   }
   const base = path.resolve(BOTS_DIR);
   const oldFull = path.resolve(path.join(BOTS_DIR, bot, oldPath));
@@ -3407,9 +3496,18 @@ io.on("connection", (socket) => {
 
 socket.on('readFile', async ({ bot, path: rel }) => {
   try {
-    const abs = safeResolve(bot, rel);
-    const content = await readText(abs);
-    io.to(bot).emit('fileData', { path: rel, content });
+    const ctx = resolveRemoteFsContext(bot);
+    if (ctx.remote) {
+      const full = safeJoinUnix(ctx.baseDir, rel || "");
+      const { status, json } = await nodeFsPost(ctx.node, "/v1/fs/read", { path: full, encoding: "utf8" });
+      if (status !== 200 || !json || !json.ok) throw new Error('remote-read-failed');
+      const content = typeof json.content === 'string' ? json.content : '';
+      io.to(bot).emit('fileData', { path: rel, content });
+    } else {
+      const abs = safeResolve(bot, rel);
+      const content = await readText(abs);
+      io.to(bot).emit('fileData', { path: rel, content });
+    }
   } catch (err) {
     io.to(bot).emit('fileData', { path: rel, content: `/* ERROR: ${err.message} */` });
   }
@@ -3417,10 +3515,18 @@ socket.on('readFile', async ({ bot, path: rel }) => {
 
 socket.on('writeFile', async ({ bot, path: rel, content }) => {
   try {
-    const abs = safeResolve(bot, rel);
-    await fsp.mkdir(path.dirname(abs), { recursive: true });
-    await fsp.writeFile(abs, content ?? '', 'utf8');
-    io.to(bot).emit('toast', { type: 'success', msg: `Saved ${rel}` });
+    const ctx = resolveRemoteFsContext(bot);
+    if (ctx.remote) {
+      const full = safeJoinUnix(ctx.baseDir, rel || "");
+      const { status, json } = await nodeFsPost(ctx.node, "/v1/fs/write", { path: full, content: content ?? '', encoding: "utf8" });
+      if (status !== 200 || !json || !json.ok) throw new Error('remote-write-failed');
+      io.to(bot).emit('toast', { type: 'success', msg: `Saved ${rel}` });
+    } else {
+      const abs = safeResolve(bot, rel);
+      await fsp.mkdir(path.dirname(abs), { recursive: true });
+      await fsp.writeFile(abs, content ?? '', 'utf8');
+      io.to(bot).emit('toast', { type: 'success', msg: `Saved ${rel}` });
+    }
   } catch (err) {
     io.to(bot).emit('toast', { type: 'error', msg: `Save failed: ${err.message}` });
   }
@@ -3428,9 +3534,17 @@ socket.on('writeFile', async ({ bot, path: rel, content }) => {
 
 socket.on('deleteFile', async ({ bot, path: rel }) => {
   try {
-    const abs = safeResolve(bot, rel);
-    await fsp.rm(abs, { recursive: true, force: true });
-    io.to(bot).emit('toast', { type: 'success', msg: `Deleted ${rel}` });
+    const ctx = resolveRemoteFsContext(bot);
+    if (ctx.remote) {
+      const full = safeJoinUnix(ctx.baseDir, rel || "");
+      const { status, json } = await nodeFsPost(ctx.node, "/v1/fs/delete", { path: full, isDir: rel?.endsWith('/') });
+      if (status !== 200 || !json || !json.ok) throw new Error('remote-delete-failed');
+      io.to(bot).emit('toast', { type: 'success', msg: `Deleted ${rel}` });
+    } else {
+      const abs = safeResolve(bot, rel);
+      await fsp.rm(abs, { recursive: true, force: true });
+      io.to(bot).emit('toast', { type: 'success', msg: `Deleted ${rel}` });
+    }
   } catch (err) {
     io.to(bot).emit('toast', { type: 'error', msg: `Delete failed: ${err.message}` });
   }
