@@ -767,6 +767,20 @@ const DOCKER_TEMPLATES = [
     }
   },
   {
+    id: "nodejs",
+    name: "Node.js",
+    description: "Node 20 runtime with /app mount and optional port mapping",
+    docker: {
+      image: "node",
+      tag: "20-alpine",
+      ports: [],
+      env: { NODE_ENV: "production" },
+      volumes: ["{BOT_DIR}:/app"],
+      command: "node /app/index.js",
+      restart: "unless-stopped"
+    }
+  },
+  {
     id: "vanilla",
     name: "Empty (custom)",
     description: "Alpine + sleep 3600",
