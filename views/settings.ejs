@@ -104,6 +104,7 @@
         <button data-panel="account"><i class="fa-solid fa-user"></i> Account</button>
         <button data-panel="security"><i class="fa-solid fa-shield-halved"></i> Security</button>
         <button data-panel="nodes"><i class="fa-solid fa-diagram-project"></i> Nodes</button>
+        <button data-panel="templates"><i class="fa-solid fa-boxes-stacked"></i> Templates</button>
         <button data-panel="integrations"><i class="fa-solid fa-file-import"></i> Integrations</button>
         <button data-panel="servers"><i class="fa-solid fa-server"></i> Servers</button>
       </nav>
@@ -310,6 +311,20 @@
                 <div id="nodesList" style="margin-top:12px;display:grid;gap:8px"></div>
               </div>
 
+              <div id="templates" class="panel-section">
+                <div class="servers-header">
+                  <div>
+                    <div style="font-weight:700">Templates</div>
+                    <div style="color:var(--muted)">Create and manage Docker templates</div>
+                  </div>
+                  <div>
+                    <button class="btn" id="openCreateTemplate"><i class="fa-solid fa-plus"></i> Create</button>
+                  </div>
+                </div>
+
+                <div id="templatesList" style="margin-top:12px;display:grid;gap:8px"></div>
+              </div>
+
               <div id="integrations" class="panel-section">
                 <div style="font-weight:700">Integrations</div>
                 <div style="color:var(--muted);margin-top:8px">Connect external services</div>
@@ -362,6 +377,25 @@
         <button class="btn ghost" id="permCancel">Cancel</button>
         <button class="btn" id="permSave">Save</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Create template modal -->
+  <div id="createTemplateOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal" id="createTemplateModal">
+      <h3><i class="fa-solid fa-boxes-stacked"></i> Create template</h3>
+      <div style="margin-top:10px;display:grid;gap:8px">
+        <input type="text" id="ct_name" placeholder="Template name" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06)">
+        <input type="text" id="ct_id" placeholder="Template id (lowercase, a-z 0-9 - _)" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06)">
+        <textarea id="ct_description" placeholder="Short description" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06);"></textarea>
+        <input type="text" id="ct_image" placeholder="Docker image (e.g. itzg/minecraft-server)" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06)">
+        <input type="text" id="ct_tag" placeholder="Tag (e.g. latest)" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06)" value="latest">
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn ghost" id="createTemplateCancel">Cancel</button>
+        <button class="btn" id="createTemplateSave"><i class="fa-solid fa-plus"></i> Create</button>
+      </div>
+      <div id="createTemplateFeedback" class="muted" style="margin-top:6px"></div>
     </div>
   </div>
 
@@ -582,6 +616,19 @@
     const permCancel = document.getElementById('permCancel');
     const permSave = document.getElementById('permSave');
 
+    const templatesListEl = document.getElementById('templatesList');
+    const openCreateTemplateBtn = document.getElementById('openCreateTemplate');
+    const createTemplateOverlay = document.getElementById('createTemplateOverlay');
+    const createTemplateModal = document.getElementById('createTemplateModal');
+    const createTemplateCancel = document.getElementById('createTemplateCancel');
+    const createTemplateSave = document.getElementById('createTemplateSave');
+    const createTemplateFeedback = document.getElementById('createTemplateFeedback');
+    const ct_id = document.getElementById('ct_id');
+    const ct_name = document.getElementById('ct_name');
+    const ct_description = document.getElementById('ct_description');
+    const ct_image = document.getElementById('ct_image');
+    const ct_tag = document.getElementById('ct_tag');
+
     const serversListEl = document.getElementById('serversList');
     const createServerBtn = document.getElementById('createServerBtn');
     const createServerNameInput = document.getElementById('createServerName');
@@ -696,6 +743,9 @@
       }
       if(panel === 'nodes') {
         loadNodes();
+      }
+      if(panel === 'templates') {
+        loadTemplates();
       }
     });
 
@@ -974,6 +1024,124 @@ function renderServers(list){
 
     function escapeHtml(s){
       return String(s).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); });
+    }
+
+    // ======== Templates ========
+    async function loadTemplates(){
+      if(!templatesListEl) return;
+      templatesListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">Loading templates…</div>`;
+      try {
+        const res = await fetch('/api/settings/templates');
+        if(!res.ok){
+          const err = await res.json().catch(()=>({error:'failed'}));
+          templatesListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">Failed to load templates</div>`;
+          console.warn(err);
+          return;
+        }
+        const data = await res.json();
+        renderTemplates(Array.isArray(data.templates) ? data.templates : []);
+      } catch (e) {
+        console.error(e);
+        templatesListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">Network error</div>`;
+      }
+    }
+
+    function renderTemplates(list){
+      if(!templatesListEl) return;
+      if(!Array.isArray(list) || list.length === 0){
+        templatesListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">No templates found. Create one to get started.</div>`;
+        return;
+      }
+      templatesListEl.innerHTML = '';
+      list.forEach(tpl => {
+        const row = document.createElement('div');
+        row.className = 'server-row clickable-card';
+        row.innerHTML = `
+          <div class="left">
+            <div class="iconWrap"><i class="fa-solid fa-boxes-stacked"></i></div>
+            <div>
+              <div class="name">${escapeHtml(tpl.name || tpl.id)}</div>
+              <div style="color:var(--muted);font-size:13px">${escapeHtml(tpl.description || 'No description')}</div>
+              <div style="color:var(--muted);font-size:12px;margin-top:4px">${escapeHtml((tpl.docker && tpl.docker.image) ? `${tpl.docker.image}:${tpl.docker.tag || 'latest'}` : 'Custom Docker')}</div>
+            </div>
+          </div>
+          <div class="actions">
+            <span class="inline-badge">ID: ${escapeHtml(tpl.id || '—')}</span>
+          </div>
+        `;
+        templatesListEl.appendChild(row);
+      });
+    }
+
+    function openTemplateModal(){
+      createTemplateOverlay.classList.add('show');
+      createTemplateModal.classList.add('show');
+      createTemplateFeedback.textContent = '';
+    }
+
+    function closeTemplateModal(){
+      createTemplateOverlay.classList.remove('show');
+      createTemplateModal.classList.remove('show');
+      createTemplateFeedback.textContent = '';
+    }
+
+    [createTemplateCancel, createTemplateOverlay].forEach(el => {
+      if(!el) return;
+      el.addEventListener('click', (e)=>{
+        if(e.target === el || el === createTemplateCancel){
+          closeTemplateModal();
+        }
+      });
+    });
+
+    if(openCreateTemplateBtn){
+      openCreateTemplateBtn.addEventListener('click', ()=>{
+        ct_name.value = '';
+        ct_id.value = '';
+        ct_description.value = '';
+        ct_image.value = '';
+        ct_tag.value = 'latest';
+        openTemplateModal();
+      });
+    }
+
+    if(createTemplateSave){
+      createTemplateSave.addEventListener('click', async ()=>{
+        const id = (ct_id.value || '').trim();
+        const name = (ct_name.value || '').trim();
+        const description = (ct_description.value || '').trim();
+        const image = (ct_image.value || '').trim();
+        const tag = (ct_tag.value || '').trim();
+
+        if(!name || !id || !image){
+          createTemplateFeedback.textContent = 'Please fill out name, id and docker image.';
+          return;
+        }
+
+        try {
+          createTemplateSave.disabled = true;
+          createTemplateFeedback.textContent = 'Saving template…';
+          const res = await fetch('/api/settings/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, name, description, dockerImage: image, dockerTag: tag })
+          });
+          const data = await res.json().catch(()=>({ error: 'Invalid response' }));
+          if(!res.ok){
+            createTemplateFeedback.textContent = data.error || 'Failed to save template';
+            createTemplateSave.disabled = false;
+            return;
+          }
+          createTemplateFeedback.textContent = 'Template created!';
+          setTimeout(closeTemplateModal, 400);
+          loadTemplates();
+        } catch (e) {
+          console.error(e);
+          createTemplateFeedback.textContent = 'Network error while saving template';
+        } finally {
+          createTemplateSave.disabled = false;
+        }
+      });
     }
 
     createServerBtn.addEventListener('click', async ()=>{
