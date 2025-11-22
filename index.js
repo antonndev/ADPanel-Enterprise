@@ -56,6 +56,7 @@ const SECURITY_FILE = path.join(__dirname, "security.json");
 const SERVERS_FILE = path.join(__dirname, "servers.json"); // index cu start file
 const versionsPath = path.join(__dirname, 'versions.json');
 const NODES_FILE = path.join(__dirname, "nodes.json");     // lista de noduri
+const TEMPLATES_FILE = path.join(__dirname, "templates.json");
 
 [BOTS_DIR, UPLOADS_DIR, PUBLIC_DIR].forEach((dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -719,7 +720,7 @@ app.get("/api/server-info/:name", async (req, res) => {
 });
 
 // --- TEMPLATES (pentru UI) ---
-const DOCKER_TEMPLATES = [
+const DEFAULT_TEMPLATES = [
   {
     id: "minecraft",
     name: "Minecraft",
@@ -768,7 +769,90 @@ const DOCKER_TEMPLATES = [
     }
   }
 ];
-app.get("/api/templates", (req, res) => res.json({ templates: DOCKER_TEMPLATES }));
+
+function ensureTemplatesFile() {
+  try {
+    if (!fs.existsSync(TEMPLATES_FILE)) {
+      fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(DEFAULT_TEMPLATES, null, 2), "utf8");
+    }
+  } catch (e) {
+    console.warn("[templates] Failed to ensure templates.json:", e && e.message);
+  }
+}
+
+function loadTemplatesFile() {
+  try {
+    ensureTemplatesFile();
+    const raw = fs.readFileSync(TEMPLATES_FILE, "utf8");
+    if (!raw.trim()) return DEFAULT_TEMPLATES;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+  } catch (e) {
+    console.warn("[templates] Failed to load templates.json:", e && e.message);
+  }
+  return DEFAULT_TEMPLATES;
+}
+
+function saveTemplatesFile(list) {
+  try {
+    fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(list, null, 2), "utf8");
+    return true;
+  } catch (e) {
+    console.warn("[templates] Failed to save templates.json:", e && e.message);
+    return false;
+  }
+}
+
+function findTemplateById(id) {
+  const key = String(id || "").toLowerCase();
+  return loadTemplatesFile().find(t => String(t?.id || "").toLowerCase() === key) || null;
+}
+
+ensureTemplatesFile();
+
+app.get("/api/templates", (req, res) => res.json({ templates: loadTemplatesFile() }));
+app.get("/api/settings/templates", (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
+  return res.json({ templates: loadTemplatesFile() });
+});
+app.post("/api/settings/templates", (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
+  const { id, name, description, dockerImage, dockerTag } = req.body || {};
+
+  const cleanId = String(id || "").trim().toLowerCase();
+  const cleanName = String(name || "").trim();
+  const cleanDesc = String(description || "").trim();
+  const cleanImage = String(dockerImage || "").trim();
+  const cleanTag = String(dockerTag || "latest").trim() || "latest";
+
+  if (!cleanId || !/^[a-z0-9_-]{2,60}$/.test(cleanId)) {
+    return res.status(400).json({ error: "invalid id" });
+  }
+  if (!cleanName) return res.status(400).json({ error: "missing name" });
+  if (!cleanImage) return res.status(400).json({ error: "missing docker image" });
+
+  const list = loadTemplatesFile();
+  const exists = list.find(t => String(t?.id || "").toLowerCase() === cleanId);
+  if (exists) return res.status(400).json({ error: "template id already exists" });
+
+  const tpl = {
+    id: cleanId,
+    name: cleanName,
+    description: cleanDesc,
+    docker: {
+      image: cleanImage,
+      tag: cleanTag,
+      ports: [],
+      volumes: ["{BOT_DIR}:/data"],
+      command: "",
+      restart: "unless-stopped"
+    }
+  };
+
+  list.push(tpl);
+  if (!saveTemplatesFile(list)) return res.status(500).json({ error: "failed to save templates" });
+  return res.json({ ok: true, template: tpl });
+});
 
 // --- LOGIN / REGISTER ---
 app.get("/login", (req, res) => { res.render("login", { error: null }); });
@@ -3111,7 +3195,7 @@ function writeDiscordBotScaffold(botDir) {
 }
 
 function runTemplateContainerNow(name, templateId, botDir, moreEnv = {}, overrideDocker = null) {
-  const tpl = DOCKER_TEMPLATES.find(t => t.id === templateId);
+  const tpl = findTemplateById(templateId);
   if (!tpl) throw new Error("Unknown template");
 
   const copy = JSON.parse(JSON.stringify(tpl));
@@ -3158,6 +3242,8 @@ app.post("/api/servers/create", async (req, res) => {
     const name = sanitizeServerName(rawName);
     if (!name) return res.status(400).json({ error: "invalid name" });
     if (!templateId) return res.status(400).json({ error: "missing templateId" });
+    const template = findTemplateById(templateId);
+    if (!template) return res.status(400).json({ error: "unknown template" });
 
     // porțiuni comune pentru indexare + ACL
     function startFileFor(templateId) {
@@ -3189,9 +3275,14 @@ app.post("/api/servers/create", async (req, res) => {
       } catch {}
 
       try {
-        const savedPort = templateId === "minecraft"
-          ? clampPort(hostPortRaw)
-          : (templateId === "nodejs" ? clampAppPort(hostPortRaw, 3001) : null);
+        let savedPort = null;
+        if (templateId === "minecraft") {
+          savedPort = clampPort(hostPortRaw);
+        } else if (templateId === "nodejs") {
+          savedPort = clampAppPort(hostPortRaw, 3001);
+        } else if (hostPortRaw != null) {
+          savedPort = clampPort(hostPortRaw);
+        }
         const entry = {
           name,
           template: templateId,
@@ -3224,36 +3315,36 @@ app.post("/api/servers/create", async (req, res) => {
     if (templateId === "minecraft") {
       const fork = mcFork || "paper";
       const version = mcVersion || "1.21.8";
-const hostPort = clampPort(hostPortRaw);
-savedPort = hostPort;
+      const hostPort = clampPort(hostPortRaw);
+      savedPort = hostPort;
 
-// scrie fișierele de bază (eula, adpanel.json, server.properties simplu)
-writeMinecraftScaffold(botDir, name, fork, version);
+      // scrie fișierele de bază (eula, adpanel.json, server.properties simplu)
+      writeMinecraftScaffold(botDir, name, fork, version);
 
-// setăm și portul în server.properties ca să nu fie 25565
-setMinecraftServerPort(botDir, hostPort);
+      // setăm și portul în server.properties ca să nu fie 25565
+      setMinecraftServerPort(botDir, hostPort);
 
-const jarUrl = await getMinecraftJarUrl(fork, version);
-const jarPath = path.join(botDir, "server.jar");
+      const jarUrl = await getMinecraftJarUrl(fork, version);
+      const jarPath = path.join(botDir, "server.jar");
       try { await downloadToFile(jarUrl, jarPath); } catch (e) {
         console.warn("[minecraft] download failed:", e && e.message);
       }
 
       await pullImage("itzg/minecraft-server:latest");
 
-const uid = typeof process.getuid === "function" ? process.getuid() : 1000;
-const gid = typeof process.getgid === "function" ? process.getgid() : 1000;
+      const uid = typeof process.getuid === "function" ? process.getuid() : 1000;
+      const gid = typeof process.getgid === "function" ? process.getgid() : 1000;
 
-const extraEnv = {
-  TYPE: "CUSTOM",
-  CUSTOM_SERVER: "/data/server.jar",
-  ENABLE_RCON: "false",
-  CREATE_CONSOLE_IN_PIPE: "true",
-  UID: String(uid),
-  GID: String(gid),
-  // dacă setezi și portul:
-  SERVER_PORT: String(hostPort),
-};
+      const extraEnv = {
+        TYPE: "CUSTOM",
+        CUSTOM_SERVER: "/data/server.jar",
+        ENABLE_RCON: "false",
+        CREATE_CONSOLE_IN_PIPE: "true",
+        UID: String(uid),
+        GID: String(gid),
+        // dacă setezi și portul:
+        SERVER_PORT: String(hostPort),
+      };
 
       const overrideDocker = { ports: [`${hostPort}:25565`] };
       runTemplateContainerNow(name, "minecraft", botDir, extraEnv, overrideDocker);
@@ -3273,7 +3364,18 @@ const extraEnv = {
       runTemplateContainerNow(name, "vanilla", botDir, {});
       startFileForIndex = null;
     } else {
-      console.warn("[create] unknown templateId", templateId);
+      const hostPort = clampPort(hostPortRaw);
+      savedPort = hostPort;
+
+      const img = template?.docker?.image;
+      const tag = template?.docker?.tag || "latest";
+      if (img) {
+        try { await pullImage(`${img}:${tag}`); } catch {}
+      }
+
+      const overrideDocker = { ports: [`${hostPort}:${hostPort}`] };
+      runTemplateContainerNow(name, templateId, botDir, {}, overrideDocker);
+      startFileForIndex = null;
     }
 
     try {
@@ -3735,7 +3837,7 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
 
           let runArgs;
           if (templateId) {
-            const tpl = DOCKER_TEMPLATES.find(t => t.id === templateId);
+            const tpl = findTemplateById(templateId);
             if (!tpl) throw new Error("Unknown template");
 
             const tplCopy = JSON.parse(JSON.stringify(tpl));

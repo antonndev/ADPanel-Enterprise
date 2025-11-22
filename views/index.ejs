@@ -1163,6 +1163,7 @@
               <p class="template-card__description">${t.description || ''}</p>
               <div class="template-card__meta">
                 <span class="inline-hint">ID: ${t.id}</span>
+                <span class="inline-hint">${(t.docker && t.docker.image) ? `${t.docker.image}:${t.docker.tag || 'latest'}` : 'Custom Docker'}</span>
               </div>
             `;
             card.addEventListener('click', () => {
