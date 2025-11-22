@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ro">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,93 +15,471 @@
     />
     <link rel="stylesheet" href="https://site-assets.fontawesome.com/releases/v6.7.2/css/all.css" />
 
-    <!-- Minimal styles for the Create + Fork + Port + Node select -->
+    <!-- Flat cards + premium aqua cursor-follow hover -->
     <style>
-      .btn-primary {
-        display: inline-flex; gap: 8px; align-items: center;
-        background: #10b981; color: #041015; border: 0; border-radius: 10px;
-        padding: 10px 14px; font-weight: 700; cursor: pointer;
-        box-shadow: 0 6px 18px rgba(16,185,129,.25);
+      :root {
+        --panel-bg: #020617;
+        --panel-bg-soft: #050816;
+        --panel-bg-soft-alt: #050b1a;
+        --panel-aqua: #22d3ee;
+        --panel-blue: #1d4ed8;
+        --panel-text-soft: #9caad0;
+        --panel-text-muted: #7e8ba4;
       }
-      .btn-primary:hover { filter: brightness(1.06); }
+
+      .btn-primary {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        background: linear-gradient(135deg, #0ea5e9, #1d4ed8);
+        color: #e5f4ff;
+        border: none;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: none;
+        transition:
+          transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1),
+          filter 0.18s ease-out,
+          background 0.28s ease-out;
+      }
+      .btn-primary:hover {
+        filter: brightness(1.06);
+        transform: translateY(-1px);
+      }
+      .btn-primary:active {
+        transform: translateY(0);
+        filter: brightness(0.96);
+      }
+
       .btn-ghost {
-        background: transparent; border: 1px solid rgba(255,255,255,.08);
-        color: #c8d3df; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+        background: rgba(15,23,42,0.85);
+        border: none;
+        color: #c8d3df;
+        padding: 9px 13px;
+        border-radius: 10px;
+        cursor: pointer;
+        box-shadow: none;
+        font-size: 13px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition:
+          background 0.2s ease-out,
+          transform 0.2s ease-out,
+          opacity 0.18s ease-out;
+      }
+      .btn-ghost:hover {
+        background: rgba(15,23,42,1);
+        transform: translateY(-1px);
+      }
+      .btn-ghost:active {
+        transform: translateY(0);
+        opacity: .9;
       }
 
       .modal-overlay {
-        position: fixed; inset: 0; background: rgba(2,6,12,.55);
-        display: none; align-items: center; justify-content: center; z-index: 9999;
-        backdrop-filter: blur(3px);
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(circle at top, rgba(15,23,42,.9), rgba(2,6,23,.96));
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        backdrop-filter: blur(10px);
+        padding: 12px;
       }
       .modal-overlay.show { display: flex; }
+
+      @keyframes modalEnter {
+        from { opacity: 0; transform: translateY(16px) scale(.97); }
+        to   { opacity: 1; transform: translateY(0)    scale(1);   }
+      }
+
       .modal-card {
-        width: min(680px, 92vw);
-        background: #0e1218;
-        border: 1px solid rgba(255,255,255,.06);
-        border-radius: 14px;
-        box-shadow: 0 30px 90px rgba(0,0,0,.55);
+        width: min(780px, 96vw);
+        max-height: 92vh;
+        background: linear-gradient(145deg, var(--panel-bg), #02091a);
+        border-radius: 18px;
         color: #e7eef7;
+        display: flex;
+        flex-direction: column;
+        box-shadow: none;
+        animation: modalEnter .22s ease-out;
+        overflow: hidden;
       }
+
       .modal-head {
-        display:flex; align-items:center; justify-content:space-between;
-        padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.06);
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        padding: 14px 18px 10px;
+        flex-shrink: 0;
       }
-      .modal-title { font-size: 18px; font-weight: 800; }
-      .modal-body { padding: 16px 18px; display: grid; gap: 12px; }
-      .modal-foot { display:flex; justify-content:flex-end; gap:10px; padding: 14px 18px; border-top:1px solid rgba(255,255,255,.06); }
+
+      .modal-title-group {
+        display:flex;
+        gap:12px;
+        align-items:flex-start;
+      }
+
+      .modal-avatar {
+        width:40px;
+        height:40px;
+        border-radius:999px;
+        background: radial-gradient(circle at 25% 0, #38bdf8, #1e40af 45%, #020617 100%);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        color:#e5f4ff;
+        flex-shrink:0;
+      }
+
+      .modal-eyebrow {
+        font-size:11px;
+        letter-spacing:0.14em;
+        text-transform:uppercase;
+        color:var(--panel-text-soft);
+        margin-bottom:2px;
+      }
+
+      .modal-title {
+        font-size:18px;
+        font-weight:800;
+      }
+
+      .modal-subtitle {
+        font-size:13px;
+        color:var(--panel-text-soft);
+        margin-top:4px;
+      }
+
+      .modal-body {
+        padding: 12px 18px 14px;
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+        flex:1 1 auto;
+        overflow:auto;
+      }
+
+      .modal-body--split {
+        display:grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+        gap:16px;
+        align-items:flex-start;
+      }
+
+      .modal-main { display:grid; gap:12px; }
+
+      .modal-aside { display:flex; flex-direction:column; gap:10px; }
+
+      @media (max-width: 720px) {
+        .modal-card {
+          width: 100%;
+          max-height: 96vh;
+        }
+        .modal-head {
+          padding: 12px 14px 6px;
+        }
+        .modal-body {
+          padding: 10px 12px 12px;
+        }
+        .modal-body--split {
+          grid-template-columns:minmax(0,1fr);
+        }
+      }
+
+      .modal-foot {
+        display:flex;
+        justify-content:flex-end;
+        gap:10px;
+        padding: 10px 18px 12px;
+        background: #020617;
+        flex-shrink: 0;
+      }
 
       .field { display: grid; gap: 6px; }
       .field label { font-size: 13px; color: #a9b4c2; }
-      .field input, .field select, .field textarea {
-        background: #0a0f14; border: 1px solid rgba(255,255,255,.06);
-        border-radius: 10px; color: #eaf1fb; padding: 10px 12px; outline: none;
+
+      .field input,
+      .field select,
+      .field textarea {
+        background: #020617;
+        border: none;
+        border-radius: 10px;
+        color: #eaf1fb;
+        padding: 9px 11px;
+        outline: none;
+        font-family: inherit;
+        font-size: 14px;
+        transition:
+          background 0.18s ease-out,
+          transform 0.14s ease-out;
       }
-      .template-grid, .node-grid {
-        display: grid; gap: 10px;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      .field input:focus,
+      .field select:focus,
+      .field textarea:focus {
+        background: #020b1f;
+        transform: translateY(-1px);
       }
-      .template-card, .node-card {
-        border: 1px solid rgba(255,255,255,.06);
-        border-radius: 12px; padding: 12px; cursor: pointer;
-        background: #0b1117; text-align: left;
-      }
-      .template-card[aria-selected="true"],
-      .node-card[aria-selected="true"] {
-        outline: 2px solid #10b981; outline-offset: 0;
-        background: linear-gradient(180deg, rgba(16,185,129,.08), transparent);
-      }
-      .template-card h4, .node-card h4 { margin: 0 0 4px 0; font-size: 14px; }
-      .template-card p, .node-card p { margin: 0; font-size: 12px; color:#a9b4c2; min-height: 32px; }
+
       .inline-hint { font-size: 12px; color: #9eb0c5; }
 
-      .node-status { display:inline-flex; align-items:center; gap:8px; font-size:12px; color:#9eb0c5; }
-      .dot { width:8px; height:8px; border-radius:999px; background:#a0aec0; display:inline-block; }
-      .dot.ok { background:#10b981; box-shadow:0 0 0 2px rgba(16,185,129,.15); }
-      .dot.down { background:#ef4444; box-shadow:0 0 0 2px rgba(239,68,68,.15); }
+      .summary-card {
+        border-radius: 12px;
+        background: var(--panel-bg-soft);
+        font-size: 13px;
+        padding: 9px 10px 8px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .summary-header {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        margin-bottom:4px;
+      }
+
+      .summary-title {
+        font-size: 11px;
+        letter-spacing:0.16em;
+        text-transform:uppercase;
+        color:var(--panel-text-soft);
+      }
+
+      .summary-badge {
+        font-size:11px;
+        padding:2px 8px;
+        border-radius:999px;
+        background: rgba(15,23,42,.95);
+        color:#cbd5f5;
+      }
+
+      .summary-row {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin-top:2px;
+      }
+
+      .summary-label { color:var(--panel-text-soft); font-size:12px; }
+
+      .summary-value {
+        color:#e5edf9;
+        font-weight:600;
+        font-size:13px;
+        margin-left:8px;
+      }
+
+      .summary-footer {
+        font-size:11px;
+        color:var(--panel-text-muted);
+        margin-top:5px;
+      }
+
+      .template-grid,
+      .node-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      }
+
+      /* Base flat card */
+      .template-card,
+      .node-card,
+      .fork-card {
+        border: none;
+        border-radius: 12px;
+        padding: 9px 9px 8px;
+        cursor: pointer;
+        background: var(--panel-bg-soft);
+        text-align: left;
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+        box-shadow: none;
+        position: relative;
+        overflow: hidden;
+        transform: translateY(0) scale(1);
+        transition:
+          transform .26s cubic-bezier(0.22, 0.61, 0.36, 1),
+          background .26s ease-out;
+        --mouse-x: 50%;
+        --mouse-y: 50%;
+      }
+
+      /* Aqua “cursor follow” aura */
+      .template-card::before,
+      .node-card::before,
+      .fork-card::before {
+        content:"";
+        position:absolute;
+        top: var(--mouse-y);
+        left: var(--mouse-x);
+        transform: translate(-50%, -50%);
+        width: 220%;
+        height: 220%;
+        background:
+          radial-gradient(circle at center,
+            rgba(34,211,238,0.25) 0%,
+            rgba(37,99,235,0.18) 35%,
+            transparent 60%);
+        opacity: 0;
+        pointer-events:none;
+        transition:
+          opacity .35s ease-out,
+          transform .35s ease-out;
+      }
+
+      .template-card:hover,
+      .node-card:hover,
+      .fork-card:hover {
+        transform: translateY(-2px) scale(1.01);
+        background: var(--panel-bg-soft-alt);
+      }
+      .template-card:hover::before,
+      .node-card:hover::before,
+      .fork-card:hover::before {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.03);
+      }
+
+      .template-card[aria-selected="true"],
+      .node-card[aria-selected="true"],
+      .fork-card[aria-selected="true"] {
+        background: var(--panel-bg-soft-alt);
+      }
+
+      .template-card__header,
+      .node-card__header {
+        display:flex;
+        gap:10px;
+        align-items:center;
+      }
+
+      .template-card__icon,
+      .node-card__icon,
+      .fork-card__icon {
+        width:30px;
+        height:30px;
+        border-radius:999px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background:#020617;
+        flex-shrink:0;
+        font-size:14px;
+      }
+
+      .template-card__title-group h4,
+      .node-card__title-group h4 {
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .template-card__badge {
+        display:inline-flex;
+        align-items:center;
+        margin-top:2px;
+        padding:2px 8px;
+        border-radius:999px;
+        font-size:11px;
+        text-transform:uppercase;
+        letter-spacing:.12em;
+        color:#cbd5f5;
+        background: rgba(15,23,42,.95);
+      }
+
+      .template-card__description,
+      .node-card__description {
+        margin: 2px 0 0 0;
+        font-size: 12px;
+        color:#a9b4c2;
+        min-height: 32px;
+      }
+
+      .template-card__meta {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        font-size:11px;
+        color:var(--panel-text-soft);
+      }
+
+      .node-status {
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        font-size:12px;
+        color:#9eb0c5;
+      }
+
+      .dot {
+        width:8px;
+        height:8px;
+        border-radius:999px;
+        background:#64748b;
+        display:inline-block;
+      }
+      .dot.ok { background:var(--panel-aqua); }
+      .dot.down { background:#ef4444; }
 
       .spinner {
-        width: 16px; height: 16px; border-radius: 999px; border: 2px solid rgba(255,255,255,.28);
-        border-top-color: #fff; animation: spin .9s linear infinite; display:none;
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        border: 2px solid rgba(255,255,255,.28);
+        border-top-color: #e5f4ff;
+        animation: spin .9s linear infinite;
+        display:none;
       }
       .spinner.show { display:inline-block; }
       @keyframes spin { to { transform: rotate(360deg); } }
 
-      /* Fork modal */
       .fork-grid {
-        display: grid; gap: 10px;
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       }
-      .fork-card {
-        border: 1px solid rgba(255,255,255,.06);
-        border-radius: 12px; padding: 12px; cursor: pointer;
-        background: #0b1117; display:flex; gap:10px; align-items:center;
-      }
-      .fork-card[aria-selected="true"] {
-        outline: 2px solid #10b981; background: linear-gradient(180deg, rgba(16,185,129,.08), transparent);
-      }
-      .fork-card .fork-title { font-weight: 700; }
+
+      .fork-title { font-weight: 700; font-size:14px; }
       .muted { color:#a9b4c2; font-size:12px; }
+
+      .port-layout {
+        display:grid;
+        grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);
+        gap:16px;
+        align-items:flex-start;
+      }
+      @media (max-width: 640px) {
+        .port-layout { grid-template-columns:minmax(0,1fr); }
+      }
+
+      .connection-chip {
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        padding:7px 9px;
+        border-radius:999px;
+        background:#020617;
+        font-size:12px;
+        color:#e5edf9;
+        box-shadow:none;
+        position:relative;
+        overflow:hidden;
+      }
+      .connection-chip i { font-size:13px; }
+      .connection-chip__divider { margin:0 2px; opacity:.6; }
+      .connection-chip code {
+        background:none;
+        padding:0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size:12px;
+        color:#e5edf9;
+      }
     </style>
   </head>
   <body>
@@ -206,7 +584,7 @@
         <div class="quick-actions__grid">
           <button class="quick-action" onclick="window.location.href='/settings?panel=account'">
             <i class="fa-solid fa-list-check"></i>
-            <p style="font-family: 'gg sans', sans-serif; font-size: 15px; line-height: 1.4;">Manage Account</p>
+            <p style="font-family: 'gg sans', sans-serif; font-size: 15px; line-height: 1.4;">Manage account</p>
           </button>
           <button class="quick-action" onclick="window.location.href='/settings?panel=servers'">
             <i class="fa-solid fa-bars-progress"></i>
@@ -275,41 +653,75 @@
     <div id="createModal" class="modal-overlay" aria-hidden="true">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="createTitle">
         <div class="modal-head">
-          <div class="modal-title" id="createTitle">
-            <i class="fa-solid fa-plus" style="margin-right:8px;color:#10b981"></i>
-            Create server
+          <div class="modal-title-group">
+            <div class="modal-avatar">
+              <i class="fa-solid fa-rocket-launch"></i>
+            </div>
+            <div>
+              <div class="modal-eyebrow">New deployment</div>
+              <div class="modal-title" id="createTitle">Create server</div>
+              <p class="modal-subtitle">Pick a template, choose a node and configure the public port.</p>
+            </div>
           </div>
-          <button id="createClose" class="btn-ghost" title="Close"><i class="fa-solid fa-xmark"></i></button>
+          <button id="createClose" class="btn-ghost" title="Close">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
 
-        <div class="modal-body">
-          <div class="field">
-            <label for="serverName">Server name</label>
-            <input id="serverName" type="text" placeholder="ex: my-discord-bot" />
-            <div class="inline-hint">Doar litere, cifre, minus și underscore. Max ~40 caractere.</div>
+        <div class="modal-body modal-body--split">
+          <div class="modal-main">
+            <div class="field">
+              <label for="serverName">Server name</label>
+              <input id="serverName" type="text" placeholder="e.g. my-discord-bot" />
+              <div class="inline-hint">
+                Only letters, numbers, dash and underscore. Max ~40 characters.
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Template <span class="inline-hint">(platform that you want to run)</span></label>
+              <div id="templateGrid" class="template-grid" role="listbox" aria-label="Templates"></div>
+              <div class="inline-hint" id="templateInfo">No template chosen</div>
+            </div>
+
+            <div class="field">
+              <label>Node <span class="inline-hint">(local node or one from the list)</span></label>
+              <div id="nodeGrid" class="node-grid" role="listbox" aria-label="Nodes"></div>
+              <div class="inline-hint" id="nodeInfo">Local node</div>
+            </div>
           </div>
 
-          <div class="field">
-            <label>Template <span class="inline-hint">(obligatoriu — nimic nu este preselectat)</span></label>
-            <div id="templateGrid" class="template-grid" role="listbox" aria-label="Templates"></div>
-            <div class="inline-hint" id="templateInfo">Nimic selectat</div>
-          </div>
-
-          <!-- NEW: Node select -->
-          <div class="field">
-            <label>Alege nodul <span class="inline-hint">(Local node sau unul din lista)</span></label>
-            <div id="nodeGrid" class="node-grid" role="listbox" aria-label="Nodes"></div>
-            <div class="inline-hint" id="nodeInfo">Selectat: Local node</div>
-          </div>
-
-          <div id="templateInfo2" class="inline-hint"></div>
+          <aside class="modal-aside">
+            <div class="summary-card">
+              <div class="summary-header">
+                <div class="summary-title">Summary</div>
+                <span class="summary-badge"><i class="fa-solid fa-bolt"></i>&nbsp;Live preview</span>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Name</span>
+                <span class="summary-value" id="summaryServerName">—</span>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Template</span>
+                <span class="summary-value" id="summaryTemplateName">—</span>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Node</span>
+                <span class="summary-value" id="summaryNodeName">Local node</span>
+              </div>
+              <div class="summary-footer">
+                Updated in real time as you fill in the form.
+              </div>
+            </div>
+            <div id="templateInfo2" class="inline-hint"></div>
+          </aside>
         </div>
 
         <div class="modal-foot">
           <span class="spinner" id="createSpinner"></span>
           <button id="createCancel" class="btn-ghost">Cancel</button>
           <button id="createConfirm" class="btn-primary">
-            <i class="fa-solid fa-plus"></i><span>Create</span>
+            <i class="fa-solid fa-arrow-right"></i><span>Continue</span>
           </button>
         </div>
       </div>
@@ -319,15 +731,25 @@
     <div id="forkModal" class="modal-overlay" aria-hidden="true">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="forkTitle">
         <div class="modal-head">
-          <div class="modal-title" id="forkTitle">
-            <i class="fa-solid fa-cube" style="margin-right:8px;color:#10b981"></i>
-            Choose Minecraft fork
+          <div class="modal-title-group">
+            <div class="modal-avatar">
+              <i class="fa-solid fa-cube"></i>
+            </div>
+            <div>
+              <div class="modal-eyebrow">Minecraft</div>
+              <div class="modal-title" id="forkTitle">Choose Minecraft fork</div>
+              <p class="modal-subtitle">Pick the fork that best matches your performance and compatibility needs.</p>
+            </div>
           </div>
-          <button id="forkClose" class="btn-ghost" title="Close"><i class="fa-solid fa-xmark"></i></button>
+          <button id="forkClose" class="btn-ghost" title="Close">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
 
         <div class="modal-body">
-          <div class="inline-hint">Versiune fixă: <strong>1.21.8</strong>. Se va descărca automat fișierul <code>.jar</code> după creare.</div>
+          <div class="inline-hint">
+            Fixed version: <strong>1.21.8</strong>. The <code>.jar</code> file will be downloaded automatically after creation.
+          </div>
 
           <div id="forkGrid" class="fork-grid" role="listbox" aria-label="Minecraft forks"></div>
 
@@ -336,40 +758,64 @@
 
         <div class="modal-foot">
           <span class="spinner" id="forkSpinner"></span>
-          <button id="forkBack" class="btn-ghost">Înapoi</button>
+          <button id="forkBack" class="btn-ghost">Back</button>
           <button id="forkConfirm" class="btn-primary">
-            <i class="fa-solid fa-check"></i><span>Continue</span>
+            <i class="fa-solid fa-arrow-right"></i><span>Continue</span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Port Selection Modal -->
+    <!-- Port Selection Modal (for ALL templates) -->
     <div id="portModal" class="modal-overlay" aria-hidden="true">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="portTitle">
         <div class="modal-head">
-          <div class="modal-title" id="portTitle">
-            <i class="fa-solid fa-ethernet" style="margin-right:8px;color:#10b981"></i>
-            Choose public port
+          <div class="modal-title-group">
+            <div class="modal-avatar">
+              <i class="fa-solid fa-ethernet"></i>
+            </div>
+            <div>
+              <div class="modal-eyebrow">Networking</div>
+              <div class="modal-title" id="portTitle">
+                <span id="portTitleText">Expose public port</span>
+              </div>
+              <p class="modal-subtitle" id="portSubtitle">Choose which public port to expose for this server.</p>
+            </div>
           </div>
-          <button id="portClose" class="btn-ghost" title="Close"><i class="fa-solid fa-xmark"></i></button>
+          <button id="portClose" class="btn-ghost" title="Close">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
 
         <div class="modal-body">
-          <div class="field">
-            <label>Server IP (public)</label>
-            <div class="inline-hint">Conectare: <code id="serverIp">detecting…</code></div>
-          </div>
-          <div class="field">
-            <label for="serverPort">Port public (1 – 35650)</label>
-            <input id="serverPort" type="number" min="1" max="35650" step="1" placeholder="25565" />
-            <div class="inline-hint">Implicit 25565. Poți scrie manual alt port (de ex. 30000).</div>
+          <div class="port-layout">
+            <div class="field">
+              <label>Public endpoint</label>
+              <div class="connection-chip">
+                <i class="fa-solid fa-plug"></i>
+                <span>
+                  <code id="serverIp">detecting…</code>
+                  <span class="connection-chip__divider">:</span>
+                  <code id="serverPortPreview">25565</code>
+                </span>
+              </div>
+              <div class="inline-hint">
+                This is the address your users will use to connect.
+              </div>
+            </div>
+            <div class="field">
+              <label for="serverPort">Public port (1 – 35650)</label>
+              <input id="serverPort" type="number" min="1" max="35650" step="1" placeholder="25565" />
+              <div class="inline-hint">
+                Default <span id="portDefaultValue">25565</span>. You can manually choose another port (e.g. 30000).
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="modal-foot">
           <span class="spinner" id="portSpinner"></span>
-          <button id="portBack" class="btn-ghost">Înapoi</button>
+          <button id="portBack" class="btn-ghost">Back</button>
           <button id="portConfirm" class="btn-primary">
             <i class="fa-solid fa-check"></i><span>Create</span>
           </button>
@@ -379,7 +825,7 @@
 
     <script>
       window.addEventListener('DOMContentLoaded', () => {
-        // ---- Splash & layout behaviors (nemodificate) ----
+        // ---- Splash & layout ----
         const splash = document.getElementById('splash-screen');
         if (!localStorage.getItem('seenSplash')) {
           const displayTime = 5000;
@@ -468,7 +914,12 @@
           }
           lastY = y; ticking = false;
         }
-        window.addEventListener('scroll', () => { if (!ticking) { requestAnimationFrame(onScrollTick); ticking = true; }}, { passive: true });
+        window.addEventListener('scroll', () => {
+          if (!ticking) {
+            requestAnimationFrame(onScrollTick);
+            ticking = true;
+          }
+        }, { passive: true });
         if ((window.scrollY || 0) > 36) topBar.classList.add('top-bar--compact'); else topBar.classList.remove('top-bar--compact');
         topBar.classList.remove('top-bar--hidden');
 
@@ -488,21 +939,61 @@
         }
         document.getElementById('logoutBtn')?.addEventListener('click', async (e) => {
           e.preventDefault();
-          try { deleteAllClientCookies(); await fetch('/logout', { method:'POST', credentials:'include' }); location.href='/login'; }
-          catch { alert('Failed to log out'); }
+          try {
+            deleteAllClientCookies();
+            await fetch('/logout', { method:'POST', credentials:'include' });
+            location.href='/login';
+          } catch {
+            alert('Failed to log out');
+          }
         });
 
-        // ----- Create flow -----
-        const createBtns = [document.getElementById('createBtn'), document.getElementById('createBtnHero'), document.getElementById('createBtnFooter')].filter(Boolean);
+        // ----- Premium hover helper (cursor-follow aqua) -----
+        function attachPremiumHover(root) {
+          if (!root) return;
+          const cards = root.querySelectorAll('.template-card, .node-card, .fork-card');
+          cards.forEach(card => {
+            card.addEventListener('pointermove', (e) => {
+              const rect = card.getBoundingClientRect();
+              const x = ((e.clientX - rect.left) / rect.width) * 100;
+              const y = ((e.clientY - rect.top) / rect.height) * 100;
+              card.style.setProperty('--mouse-x', `${x}%`);
+              card.style.setProperty('--mouse-y', `${y}%`);
+            });
+            card.addEventListener('pointerleave', () => {
+              card.style.removeProperty('--mouse-x');
+              card.style.removeProperty('--mouse-y');
+            });
+          });
+        }
+
+        // ----- Create / Fork / Port flow -----
+        const createBtns = [
+          document.getElementById('createBtn'),
+          document.getElementById('createBtnHero'),
+          document.getElementById('createBtnFooter')
+        ].filter(Boolean);
+
         const createModal = document.getElementById('createModal');
         const createClose = document.getElementById('createClose');
         const createCancel = document.getElementById('createCancel');
         const createConfirm = document.getElementById('createConfirm');
         const createSpinner = document.getElementById('createSpinner');
+
         const serverNameEl = document.getElementById('serverName');
         const templateGrid = document.getElementById('templateGrid');
         const templateInfo = document.getElementById('templateInfo');
 
+        const nodeGrid = document.getElementById('nodeGrid');
+        const nodeInfo = document.getElementById('nodeInfo');
+
+        const summaryNameEl = document.getElementById('summaryServerName');
+        const summaryTemplateEl = document.getElementById('summaryTemplateName');
+        const summaryNodeEl = document.getElementById('summaryNodeName');
+
+        const templateInfo2 = document.getElementById('templateInfo2');
+
+        // Fork modal
         const forkModal = document.getElementById('forkModal');
         const forkClose = document.getElementById('forkClose');
         const forkBack = document.getElementById('forkBack');
@@ -519,51 +1010,97 @@
         const portSpinner = document.getElementById('portSpinner');
         const serverIpEl = document.getElementById('serverIp');
         const serverPortEl = document.getElementById('serverPort');
+        const serverPortPreviewEl = document.getElementById('serverPortPreview');
+        const portDefaultValueEl = document.getElementById('portDefaultValue');
+        const portTitleTextEl = document.getElementById('portTitleText');
+        const portSubtitleEl = document.getElementById('portSubtitle');
 
-        // NEW: Node select
-        const nodeGrid = document.getElementById('nodeGrid');
-        const nodeInfo = document.getElementById('nodeInfo');
-
-        let templates = [];
-        let selectedTemplateId = null; // nimic preselectat
         const MC_VERSION = "1.21.8";
         const MC_FORKS = [
-          { id: "paper",      name: "Paper",      desc: "Performanță, compatibilitate ridicată" },
-          { id: "pufferfish", name: "Pufferfish", desc: "Optimizări suplimentare pentru TPS" },
-          { id: "vanilla",    name: "Vanilla",    desc: "Experiență standard, fără patch-uri" },
-          { id: "purpur",     name: "Purpur",     desc: "Fork Paper cu setări extra" }
+          { id: "paper",      name: "Paper",      desc: "Great performance and high plugin compatibility." },
+          { id: "pufferfish", name: "Pufferfish", desc: "Additional optimisations focused on TPS stability." },
+          { id: "vanilla",    name: "Vanilla",    desc: "Standard experience without extra patches." },
+          { id: "purpur",     name: "Purpur",     desc: "Paper fork with extra configuration options." }
         ];
-        let selectedForkId = null;
 
-        // Node state
+        let templates = [];
         let nodes = [];
-        let selectedNodeId = "local"; // implicit
+        let selectedTemplateId = null;
+        let selectedForkId = null;
+        let selectedNodeId = "local";
+        let portBackTarget = "create";
+
+        function sanitizeName(s) {
+          s = (s || '').trim().toLowerCase();
+          s = s.replace(/\s+/g, '-').replace(/[^a-z0-9\-_]/g, '');
+          return s.slice(0, 40) || '';
+        }
+
+        function getTemplateMeta(t) {
+          const id = ((t && t.id) || '').toString().toLowerCase();
+          if (id.includes('minecraft') || id === 'mc') {
+            return { icon: 'fa-solid fa-cube', badge: 'Minecraft' };
+          }
+          if (id.includes('node') || id.includes('discord')) {
+            return { icon: 'fa-brands fa-node-js', badge: 'Node.js' };
+          }
+          if (id.includes('python') || id.includes('py')) {
+            return { icon: 'fa-brands fa-python', badge: 'Python' };
+          }
+          if (id.includes('proxy') || id.includes('web') || id.includes('http')) {
+            return { icon: 'fa-solid fa-cloud', badge: 'Web' };
+          }
+          return { icon: 'fa-solid fa-server', badge: 'Generic' };
+        }
+
+        function getDefaultPortForTemplate(templateId) {
+          const id = (templateId || '').toString().toLowerCase();
+          if (!id) return 25565;
+          if (id.includes('minecraft') || id === 'mc') return 25565;
+          if (id.includes('node') || id.includes('discord')) return 3000;
+          if (id.includes('http') || id.includes('web') || id.includes('proxy')) return 80;
+          return 8080;
+        }
 
         function openCreate() {
           createModal.classList.add('show');
           createModal.setAttribute('aria-hidden', 'false');
-          serverNameEl.value = '';
-          templateGrid.innerHTML = '<div class="inline-hint">Se încarcă template-urile…</div>';
-          templateInfo.textContent = 'Nimic selectat';
-          selectedTemplateId = null;
 
-          // reset node ui
-          nodeGrid.innerHTML = '<div class="inline-hint">Se încarcă nodurile…</div>';
-          selectedNodeId = "local";
-          nodeInfo.textContent = "Selectat: Local node";
+          selectedTemplateId = null;
+          selectedForkId = null;
+          selectedNodeId = 'local';
+          portBackTarget = 'create';
+
+          if (serverNameEl) serverNameEl.value = '';
+          if (templateGrid) templateGrid.innerHTML = '<div class="inline-hint">Loading templates…</div>';
+          if (templateInfo) templateInfo.textContent = 'No template chosen';
+
+          if (nodeGrid) nodeGrid.innerHTML = '<div class="inline-hint">Loading nodes…</div>';
+          if (nodeInfo) nodeInfo.textContent = 'Local node';
+
+          if (summaryNameEl) summaryNameEl.textContent = '—';
+          if (summaryTemplateEl) summaryTemplateEl.textContent = '—';
+          if (summaryNodeEl) summaryNodeEl.textContent = 'Local node';
+          if (templateInfo2) templateInfo2.textContent = '';
 
           fetchTemplates();
           fetchNodes();
         }
+
         function closeCreate() {
           createModal.classList.remove('show');
           createModal.setAttribute('aria-hidden', 'true');
         }
+
         createBtns.forEach(btn => btn.addEventListener('click', openCreate));
         createClose.addEventListener('click', closeCreate);
         createCancel.addEventListener('click', closeCreate);
-        createModal.addEventListener('click', (e) => { if (e.target === createModal) closeCreate(); });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && createModal.classList.contains('show')) closeCreate(); });
+        createModal.addEventListener('click', (e) => {
+          if (e.target === createModal) closeCreate();
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && createModal.classList.contains('show')) closeCreate();
+        });
 
         async function fetchTemplates() {
           try {
@@ -573,9 +1110,9 @@
             templates = (data && data.templates) || [];
           } catch (e) {
             templates = [
-              { id: 'minecraft', name: 'Minecraft', description: 'Server Minecraft (fork la pasul următor)' },
-              { id: 'discord-bot', name: 'Discord Bot', description: 'Node 20 runtime (mount /app)' },
-              { id: 'vanilla', name: 'Empty', description: 'Alpine base (sleep)' },
+              { id: 'minecraft',   name: 'Minecraft',   description: 'Minecraft server (fork selection in the next step).' },
+              { id: 'discord-bot', name: 'Discord Bot', description: 'Node 20 runtime (mount /app).' },
+              { id: 'vanilla',     name: 'Empty',       description: 'Alpine base (sleep).' },
             ];
           }
           renderTemplates();
@@ -593,51 +1130,85 @@
         }
 
         function renderTemplates() {
+          if (!templateGrid) return;
           templateGrid.innerHTML = '';
+
+          if (!templates.length) {
+            const empty = document.createElement('div');
+            empty.className = 'inline-hint';
+            empty.textContent = 'No templates available.';
+            templateGrid.appendChild(empty);
+            return;
+          }
+
           templates.forEach(t => {
             const card = document.createElement('button');
             card.type = 'button';
             card.className = 'template-card';
-            card.setAttribute('role','option');
+            card.setAttribute('role', 'option');
             card.setAttribute('aria-selected', 'false');
+
+            const meta = getTemplateMeta(t);
+
             card.innerHTML = `
-              <h4>${t.name}</h4>
-              <p>${t.description || ''}</p>
-              <div class="inline-hint">ID: ${t.id}</div>
+              <div class="template-card__header">
+                <div class="template-card__icon">
+                  <i class="${meta.icon}"></i>
+                </div>
+                <div class="template-card__title-group">
+                  <h4>${t.name}</h4>
+                  <span class="template-card__badge">${meta.badge}</span>
+                </div>
+              </div>
+              <p class="template-card__description">${t.description || ''}</p>
+              <div class="template-card__meta">
+                <span class="inline-hint">ID: ${t.id}</span>
+              </div>
             `;
             card.addEventListener('click', () => {
               selectedTemplateId = t.id;
               [...templateGrid.children].forEach(c => c.setAttribute('aria-selected','false'));
               card.setAttribute('aria-selected','true');
-              templateInfo.textContent = `Selectat: ${t.name}`;
+              if (templateInfo) templateInfo.textContent = t.name;
+              if (summaryTemplateEl) summaryTemplateEl.textContent = t.name;
+              if (templateInfo2) templateInfo2.textContent = t.description || '';
             });
             templateGrid.appendChild(card);
           });
+
+          attachPremiumHover(templateGrid);
         }
 
         function renderNodes() {
+          if (!nodeGrid) return;
           nodeGrid.innerHTML = '';
 
-          // 1) Local node (mereu disponibil)
           const local = document.createElement('button');
           local.type = 'button';
           local.className = 'node-card';
           local.setAttribute('role','option');
           local.setAttribute('aria-selected', 'true');
           local.innerHTML = `
-            <h4>Local node</h4>
-            <p>Rulează pe același host cu panoul</p>
+            <div class="node-card__header">
+              <div class="node-card__icon">
+                <i class="fa-solid fa-house-laptop"></i>
+              </div>
+              <div class="node-card__title-group">
+                <h4>Local node</h4>
+                <p class="node-card__description">Runs on the same host as the panel.</p>
+              </div>
+            </div>
             <div class="node-status"><span class="dot ok"></span> assumed online</div>
           `;
           local.addEventListener('click', () => {
             selectedNodeId = 'local';
             [...nodeGrid.children].forEach(c => c.setAttribute('aria-selected','false'));
             local.setAttribute('aria-selected','true');
-            nodeInfo.textContent = 'Selectat: Local node';
+            if (nodeInfo) nodeInfo.textContent = 'Local node';
+            if (summaryNodeEl) summaryNodeEl.textContent = 'Local node';
           });
           nodeGrid.appendChild(local);
 
-          // 2) Nodes din API
           nodes.forEach(n => {
             const online = !!n.online;
             const el = document.createElement('button');
@@ -646,8 +1217,15 @@
             el.setAttribute('role','option');
             el.setAttribute('aria-selected', 'false');
             el.innerHTML = `
-              <h4>${n.name || n.uuid}</h4>
-              <p>${n.address || ''}</p>
+              <div class="node-card__header">
+                <div class="node-card__icon">
+                  <i class="fa-solid fa-diagram-project"></i>
+                </div>
+                <div class="node-card__title-group">
+                  <h4>${n.name || n.uuid}</h4>
+                  <p class="node-card__description">${n.address || ''}</p>
+                </div>
+              </div>
               <div class="node-status"><span class="dot ${online ? 'ok' : 'down'}"></span> ${online ? 'online' : 'offline'}</div>
               <div class="inline-hint">ID: ${n.uuid}</div>
             `;
@@ -655,22 +1233,26 @@
               selectedNodeId = n.uuid || n.id || n.name;
               [...nodeGrid.children].forEach(c => c.setAttribute('aria-selected','false'));
               el.setAttribute('aria-selected','true');
-              nodeInfo.textContent = `Selectat: ${n.name || n.uuid} (${online ? 'online' : 'offline'})`;
+              const label = n.name || n.uuid;
+              if (nodeInfo) nodeInfo.textContent = online ? label : `${label} (offline)`;
+              if (summaryNodeEl) summaryNodeEl.textContent = label;
             });
             nodeGrid.appendChild(el);
           });
+
+          if (summaryNodeEl && !nodes.length) {
+            summaryNodeEl.textContent = 'Local node';
+          }
+
+          attachPremiumHover(nodeGrid);
         }
 
-        function sanitizeName(s) {
-          s = (s || '').trim().toLowerCase();
-          s = s.replace(/\s+/g, '-').replace(/[^a-z0-9\-_]/g, '');
-          return s.slice(0, 40) || '';
-        }
-
-        // Fork modal helpers
         function openForkModal() {
-          forkGrid.innerHTML = '';
+          if (!forkModal) return;
+          if (forkGrid) forkGrid.innerHTML = '';
           selectedForkId = null;
+          if (forkInfo) forkInfo.textContent = 'Choose a fork (required).';
+
           MC_FORKS.forEach(f => {
             const card = document.createElement('button');
             card.type = 'button';
@@ -678,39 +1260,60 @@
             card.setAttribute('role','option');
             card.setAttribute('aria-selected','false');
             card.innerHTML = `
-              <div class="fork-title">${f.name}</div>
-              <div class="muted">— ${f.desc}</div>
+              <div class="fork-card__icon">
+                <i class="fa-solid fa-cubes"></i>
+              </div>
+              <div>
+                <div class="fork-title">${f.name}</div>
+                <div class="muted">${f.desc}</div>
+              </div>
             `;
             card.addEventListener('click', () => {
               selectedForkId = f.id;
               [...forkGrid.children].forEach(c => c.setAttribute('aria-selected','false'));
               card.setAttribute('aria-selected','true');
-              forkInfo.textContent = `Fork selectat: ${f.name} (${MC_VERSION})`;
+              if (forkInfo) forkInfo.textContent = 'Fork: ' + f.name + ' (' + MC_VERSION + ')';
             });
             forkGrid.appendChild(card);
           });
 
-          forkInfo.textContent = 'Alege un fork (obligatoriu).';
+          attachPremiumHover(forkGrid);
+
           forkModal.classList.add('show');
-          forkModal.setAttribute('aria-hidden', 'false');
+          forkModal.setAttribute('aria-hidden','false');
         }
+
         function closeForkModal() {
           forkModal.classList.remove('show');
-          forkModal.setAttribute('aria-hidden', 'true');
+          forkModal.setAttribute('aria-hidden','true');
         }
+
         forkClose.addEventListener('click', closeForkModal);
         forkBack.addEventListener('click', () => {
           closeForkModal();
           createModal.classList.add('show');
-          createModal.setAttribute('aria-hidden', 'false');
+          createModal.setAttribute('aria-hidden','false');
         });
-        forkModal.addEventListener('click', (e) => { if (e.target === forkModal) closeForkModal(); });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && forkModal.classList.contains('show')) closeForkModal(); });
+        forkModal.addEventListener('click', (e) => {
+          if (e.target === forkModal) closeForkModal();
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && forkModal.classList.contains('show')) closeForkModal();
+        });
 
-        // ----- Port modal helpers -----
-        function openPortModal() {
-          serverIpEl.textContent = 'detecting…';
-          serverPortEl.value = '25565';
+        function openPortModal(backFrom) {
+          portBackTarget = backFrom || 'create';
+
+          if (serverPortEl) {
+            const defPort = getDefaultPortForTemplate(selectedTemplateId);
+            serverPortEl.value = String(defPort);
+            if (portDefaultValueEl) portDefaultValueEl.textContent = String(defPort);
+            if (serverPortPreviewEl) serverPortPreviewEl.textContent = String(defPort);
+          }
+
+          if (serverIpEl) {
+            serverIpEl.textContent = 'detecting…';
+          }
 
           const ipv4Re = /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/;
           function extractIP(s) {
@@ -722,16 +1325,28 @@
             return null;
           }
           function pickIpFromJSON(j) {
-            return extractIP(j?.publicIp) || extractIP(j?.ip) || extractIP(j?.address) || extractIP(j?.host) || extractIP(j?.hostname);
+            return extractIP(j?.publicIp) ||
+                   extractIP(j?.ip) ||
+                   extractIP(j?.address) ||
+                   extractIP(j?.host) ||
+                   extractIP(j?.hostname);
           }
           function setIp(ip) {
-            serverIpEl.textContent = ip || 'unknown';
+            if (serverIpEl) serverIpEl.textContent = ip || 'unknown';
           }
 
-          // 1) Dacă se creează pe local, folosim IP-ul panoului; altfel afișăm IP-ul nodului selectat
+          const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+          const templateLabel = selectedTemplate ? selectedTemplate.name : 'server';
+          if (portTitleTextEl) portTitleTextEl.textContent = 'Expose public port';
+          if (portSubtitleEl) portSubtitleEl.textContent = `Choose the public port for ${templateLabel}.`;
+
           if (selectedNodeId && selectedNodeId !== 'local') {
-            const node = (nodes || []).find(x => (x.uuid === selectedNodeId) || (x.id === selectedNodeId) || (x.name === selectedNodeId));
-            const ip = node?.address || null;
+            const node = (nodes || []).find(x =>
+              (x.uuid === selectedNodeId) ||
+              (x.id === selectedNodeId) ||
+              (x.name === selectedNodeId)
+            );
+            const ip = node && (node.address || node.host || node.hostname);
             setIp(ip);
           } else {
             fetch('/api/server-info')
@@ -741,107 +1356,159 @@
           }
 
           portModal.classList.add('show');
-          portModal.setAttribute('aria-hidden', 'false');
+          portModal.setAttribute('aria-hidden','false');
         }
+
         function closePortModal() {
           portModal.classList.remove('show');
-          portModal.setAttribute('aria-hidden', 'true');
+          portModal.setAttribute('aria-hidden','true');
         }
+
         portClose.addEventListener('click', closePortModal);
         portBack.addEventListener('click', () => {
           closePortModal();
-          forkModal.classList.add('show');
-          forkModal.setAttribute('aria-hidden', 'false');
+          if (portBackTarget === 'fork') {
+            forkModal.classList.add('show');
+            forkModal.setAttribute('aria-hidden','false');
+          } else {
+            createModal.classList.add('show');
+            createModal.setAttribute('aria-hidden','false');
+          }
         });
-        portModal.addEventListener('click', (e) => { if (e.target === portModal) closePortModal(); });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && portModal.classList.contains('show')) closePortModal(); });
+        portModal.addEventListener('click', (e) => {
+          if (e.target === portModal) closePortModal();
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && portModal.classList.contains('show')) closePortModal();
+        });
 
-        // Create confirm (step 1)
-        createConfirm.addEventListener('click', async () => {
+        if (serverPortEl && serverPortPreviewEl) {
+          serverPortEl.addEventListener('input', () => {
+            const raw = serverPortEl.value.trim();
+            serverPortPreviewEl.textContent = raw || (portDefaultValueEl ? portDefaultValueEl.textContent : '—');
+          });
+        }
+
+        if (serverNameEl && summaryNameEl) {
+          serverNameEl.addEventListener('input', () => {
+            const val = sanitizeName(serverNameEl.value);
+            summaryNameEl.textContent = val || '—';
+          });
+        }
+
+        // Step 1: create modal "Continue"
+        createConfirm.addEventListener('click', () => {
           const raw = serverNameEl.value;
           const name = sanitizeName(raw);
-          if (!name) return alert('Introdu un nume valid (litere/cifre/-/_)');
-          if (!selectedTemplateId) return alert('Alege un template');
-
-          // dacă s-a selectat un nod offline, opresc
-          if (selectedNodeId !== 'local') {
-            const node = (nodes || []).find(x => (x.uuid === selectedNodeId) || (x.id === selectedNodeId) || (x.name === selectedNodeId));
-            if (!node) return alert('Nodul selectat nu mai există.');
-            if (!node.online) return alert('Nodul selectat este offline.');
+          if (!name) {
+            alert('Please enter a valid name (letters / numbers / - / _).');
+            return;
+          }
+          if (!selectedTemplateId) {
+            alert('Please choose a template.');
+            return;
           }
 
-          // Dacă e Minecraft -> deschidem fork modal (nu trimitem încă)
+          if (selectedNodeId !== 'local') {
+            const node = (nodes || []).find(x =>
+              (x.uuid === selectedNodeId) ||
+              (x.id === selectedNodeId) ||
+              (x.name === selectedNodeId)
+            );
+            if (!node) {
+              alert('The chosen node no longer exists.');
+              return;
+            }
+            if (!node.online) {
+              alert('The chosen node is offline.');
+              return;
+            }
+          }
+
           if (selectedTemplateId === 'minecraft') {
-            createModal.classList.remove('show');
-            createModal.setAttribute('aria-hidden', 'true');
+            closeCreate();
             openForkModal();
             return;
           }
 
-          // Altfel creăm direct
-          try {
-            createSpinner.classList.add('show');
-            createConfirm.disabled = true;
-            const r = await fetch('/api/servers/create', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name, templateId: selectedTemplateId, nodeId: selectedNodeId })
-            });
-            const j = await r.json().catch(()=> ({}));
-            if (!r.ok || !j.ok) throw new Error((j && j.error) ? j.error : 'Create failed');
-            window.location.href = `/bot/${encodeURIComponent(name)}`;
-          } catch (e) {
-            alert(e.message || 'Create failed');
-          } finally {
-            createSpinner.classList.remove('show');
-            createConfirm.disabled = false;
-          }
+          closeCreate();
+          openPortModal('create');
         });
 
-        // Fork confirm -> open Port modal (step 2)
+        // Step 2: fork modal -> port modal
         forkConfirm.addEventListener('click', () => {
-          if (!selectedForkId) return alert('Selectează un fork');
+          if (!selectedForkId) {
+            alert('Please choose a fork.');
+            return;
+          }
           closeForkModal();
-          openPortModal();
+          openPortModal('fork');
         });
 
-        // Port confirm -> finalize create for Minecraft (step 3)
+        // Step 3: port modal -> final create (for ALL templates)
         portConfirm.addEventListener('click', async () => {
           const raw = serverNameEl.value;
           const name = sanitizeName(raw);
-          if (!name) return alert('Numele serverului lipsă/invalid');
-          if (!selectedForkId) return alert('Selectează un fork');
-
-          if (selectedNodeId !== 'local') {
-            const node = (nodes || []).find(x => (x.uuid === selectedNodeId) || (x.id === selectedNodeId) || (x.name === selectedNodeId));
-            if (!node) return alert('Nodul selectat nu mai există.');
-            if (!node.online) return alert('Nodul selectat este offline.');
+          if (!name) {
+            alert('Server name is missing or invalid.');
+            return;
+          }
+          if (!selectedTemplateId) {
+            alert('Template is not chosen.');
+            return;
+          }
+          if (selectedTemplateId === 'minecraft' && !selectedForkId) {
+            alert('Please choose a fork.');
+            return;
           }
 
-          // validate port
+          if (selectedNodeId !== 'local') {
+            const node = (nodes || []).find(x =>
+              (x.uuid === selectedNodeId) ||
+              (x.id === selectedNodeId) ||
+              (x.name === selectedNodeId)
+            );
+            if (!node) {
+              alert('The chosen node no longer exists.');
+              return;
+            }
+            if (!node.online) {
+              alert('The chosen node is offline.');
+              return;
+            }
+          }
+
           const portVal = parseInt(serverPortEl.value, 10);
           if (!Number.isInteger(portVal) || portVal < 1 || portVal > 35650) {
-            return alert('Port invalid. Alege între 1 și 35650.');
+            alert('Invalid port. Choose a value between 1 and 35650.');
+            return;
           }
 
           try {
             portSpinner.classList.add('show');
             portConfirm.disabled = true;
 
+            const payload = {
+              name,
+              templateId: selectedTemplateId,
+              nodeId: selectedNodeId,
+              hostPort: portVal
+            };
+
+            if (selectedTemplateId === 'minecraft') {
+              payload.mcFork = selectedForkId;
+              payload.mcVersion = MC_VERSION;
+            }
+
             const r = await fetch('/api/servers/create', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name,
-                templateId: 'minecraft',
-                mcFork: selectedForkId,
-                mcVersion: MC_VERSION,
-                hostPort: portVal,
-                nodeId: selectedNodeId
-              })
+              body: JSON.stringify(payload)
             });
-            const j = await r.json().catch(()=> ({}));
-            if (!r.ok || !j.ok) throw new Error((j && j.error) ? j.error : 'Create failed');
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j.ok) {
+              throw new Error((j && j.error) ? j.error : 'Create failed');
+            }
 
             window.location.href = `/bot/${encodeURIComponent(name)}`;
           } catch (e) {

@@ -1,7 +1,0 @@
-{
-  "type": "minecraft",
-  "fork": "paper",
-  "version": "1.21.8",
-  "start": "server.jar",
-  "createdAt": 1763287141236
-}

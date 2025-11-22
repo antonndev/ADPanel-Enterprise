@@ -177,8 +177,8 @@
       "id": "python",
       "template": "discord-bot",
       "name": "Python",
-      "description": "Python runtimes for Discord bots.",
-      "logo": "https://www.python.org/static/community_logos/python-logo-master-v3-TM.png",
+      "description": "With this you can run any project based on Python.",
+      "logo": "https://files.catbox.moe/gqnc4x.png",
       "versions": [
         {
           "id": "python-3.10",

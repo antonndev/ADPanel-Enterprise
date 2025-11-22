@@ -48,6 +48,7 @@ const STYLE_CSS = path.join(PUBLIC_DIR, "style.css");
 const CONFIG_FILE = path.join(__dirname, "config.json");
 const NODE_AGENT_PORT = parseInt(process.env.NODE_AGENT_PORT || '8080', 10);
 const LOCAL_NODE_TOKEN = process.env.NODE_AGENT_TOKEN || process.env.NODE_TOKEN || null;
+const NODE_VOLUME_ROOT = "/var/lib/node/volumes/volumes";
 const USER_ACCESS_FILE = path.join(__dirname, "user-access.json");
 const USERS_FILE = path.join(__dirname, "user.json");
 const remoteLogClients = {};
@@ -537,6 +538,21 @@ function docker(args, opts = {}) {
   return spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"], ...opts });
 }
 function dockerCollect(args, opts = {}) { return execCollect("docker", args, opts); }
+async function isContainerRunning(name) {
+  try {
+    const res = await dockerCollect(["inspect", "-f", "{{.State.Running}}", name]);
+    return String(res.out || "").trim() === "true";
+  } catch {
+    return false;
+  }
+}
+function resolveNodeRuntimeImage(entry) {
+  const runtime = entry && entry.runtime ? entry.runtime : {};
+  return {
+    image: runtime.image || "node",
+    tag: runtime.tag || "20-alpine"
+  };
+}
 async function containerExists(name) { try { await dockerCollect(["inspect", name]); return true; } catch { return false; } }
 async function ensureNoContainer(name) { try { await dockerCollect(["rm", "-f", name]); } catch {} }
 async function pullImage(imageWithTag) {
@@ -707,7 +723,7 @@ const DOCKER_TEMPLATES = [
   {
     id: "minecraft",
     name: "Minecraft",
-    description: "itzg/minecraft-server + CUSTOM JAR; 25565/TCP; RCON off; console pipe on",
+    description: "You can create minecraft servers on this platform",
     docker: {
       image: "itzg/minecraft-server",
       tag: "latest",
@@ -724,23 +740,23 @@ const DOCKER_TEMPLATES = [
     }
   },
   {
-    id: "discord-bot",
-    name: "Discord Bot",
-    description: "Node 20 + mount /app, TOKEN env",
+    id: "nodejs",
+    name: "Node.js",
+    description: "Run Node.JS applications",
     docker: {
       image: "node",
       tag: "20-alpine",
       ports: [],
-      env: { NODE_ENV: "production", DISCORD_TOKEN: "" },
+      env: { NODE_ENV: "production" },
       volumes: ["{BOT_DIR}:/app"],
-      command: "node /app/index.js",
+      command: "sh -c \"cd /app && npm install && node /app/index.js\"",
       restart: "unless-stopped"
     }
   },
   {
     id: "vanilla",
-    name: "Empty (custom)",
-    description: "Alpine + sleep 3600",
+    name: "Vanilla",
+    description: "Choose what platform you want",
     docker: {
       image: "alpine",
       tag: "latest",
@@ -898,6 +914,75 @@ app.post('/api/servers/:name/apply-version', async (req, res) => {
     console.error('apply-version error', e);
     return res.status(500).json({
       error: 'server-error',
+      detail: e && e.message ? e.message : String(e),
+    });
+  }
+});
+app.post('/api/servers/:bot/apply-version', async (req, res) => {
+  const bot = String(req.params.bot || '').trim();
+  const { providerId, versionId } = req.body || {};
+
+  if (!bot || !providerId || !versionId) {
+    return res.status(400).json({ error: 'missing-fields' });
+  }
+
+  const url = findVersionUrl(providerId, versionId);
+  if (!url) return res.status(400).json({ error: 'version-url-not-found' });
+
+  const rec = getServerRecord(bot);
+  if (!rec) return res.status(404).json({ error: 'server-not-found' });
+
+  console.log('[apply] req', { bot, providerId, versionId, url });
+  console.log('[apply] rec', { nodeId: rec.nodeId, ip: rec.ip });
+
+  // === dacă nodeId este null/falsy => LOCAL NODE -> descarcă în bots/<bot> și gata
+  if (!rec.nodeId) {
+    try {
+      console.log('[apply] nodeId is null -> treating as local node, downloading to bots folder');
+      const destPath = await downloadVersionToLocalBotsFolder(bot, url);
+      console.log('[apply] local download ok:', destPath);
+      return res.json({ ok: true, local: true, path: destPath });
+    } catch (err) {
+      console.error('[apply] local download failed', err);
+      return res.status(500).json({
+        error: 'local-download-failed',
+        detail: err && err.message ? err.message : String(err),
+      });
+    }
+  }
+
+  // === dacă avem nodeId -> comportamentul pe nod (forward)
+  const nodeBase = resolveNodeBase(rec);
+  if (!nodeBase) return res.status(400).json({ error: 'node-base-unresolved' });
+
+  const pathOnly = `/v1/servers/${encodeURIComponent(bot)}/apply-version`;
+  const forwardUrl = nodeBase + pathOnly;
+
+  console.log('[apply] forward -> node', {
+    forwardUrl,
+    nodeId: rec.nodeId,
+  });
+
+  const body = { providerId, versionId, url, nodeId: rec.nodeId };
+
+  try {
+    const r = await fetch(forwardUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) {
+      return res.status(r.status || 500).json({
+        error: 'node-apply-failed',
+        detail: j.error || j.detail || r.statusText,
+      });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('[apply] panel-apply-error', e);
+    return res.status(500).json({
+      error: 'panel-apply-error',
       detail: e && e.message ? e.message : String(e),
     });
   }
@@ -1393,13 +1478,14 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
     });
 
     // 3) determinăm dacă serverul e pe nod sau local
-    const idx   = loadServersIndex(); // servers.json – array
-    const entry = Array.isArray(idx) ? idx.find(e => e && e.name === bot) : null;
+    const resolved = resolveTemplateForBot(bot) || {};
+    const entry = resolved.entry || null;
+    const meta = resolved.meta || {};
 
     const rawNodeId = entry && (entry.nodeId || entry.node || entry.id || entry.uuid || null);
     const ip        = entry && (entry.ip || entry.host || null);
 
-    const serverTemplate = normalizeTemplateId(entry && entry.template);
+    const serverTemplate = normalizeTemplateId(resolved.template || entry?.template);
 
     // === runtime selection pentru template-uri non-Minecraft (ex: Discord bot) ===
     if (serverTemplate && serverTemplate !== 'minecraft') {
@@ -1407,17 +1493,22 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
       if (!providerCfg || !providerSupportsTemplate(providerCfg, serverTemplate)) {
         return res.status(400).json({ ok: false, error: 'provider-not-supported' });
       }
-      const versionCfg = findProviderVersionConfig(providerId, versionId);
+      let versionCfg = findProviderVersionConfig(providerId, versionId);
+      if (!versionCfg && providerId === 'python') {
+        versionCfg = buildPythonVersionConfig(versionId, entry, meta);
+      } else if (!versionCfg && providerId === 'nodejs') {
+        versionCfg = buildNodeVersionConfig(versionId, entry, meta);
+      }
       if (!versionCfg) {
         return res.status(404).json({ ok: false, error: 'version-not-found' });
-      }
-      if (isRemoteEntry(entry)) {
-        return res.status(400).json({ ok: false, error: 'runtime-change-remote-unsupported' });
       }
       const dockerCfg = versionCfg.docker || {};
       if (!dockerCfg.image || !dockerCfg.tag) {
         return res.status(400).json({ ok: false, error: 'missing-docker-config' });
       }
+
+      const startFile = versionCfg.start || entry?.start || meta.start || 'index.js';
+      const port = clampAppPort(entry?.port ?? meta?.port ?? 3001, 3001);
 
       const runtime = {
         providerId: providerCfg.id,
@@ -1432,9 +1523,51 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
       const updatedEntry = Object.assign({}, entry || {}, {
         name: bot,
         template: providerCfg.template || serverTemplate || 'discord-bot',
-        start: versionCfg.start || entry?.start || 'index.js',
-        runtime
+        start: startFile,
+        runtime,
+        port
       });
+
+      if (isRemoteEntry(entry)) {
+        let forwardIp = ip;
+        let forwardPort = NODE_AGENT_PORT;
+        if (!forwardIp && rawNodeId) {
+          const node = findNodeByIdOrName(rawNodeId);
+          forwardIp = node && (node.address || node.ip || node.host);
+          forwardPort = clampApiPort(node?.api_port || NODE_AGENT_PORT);
+        }
+
+        if (forwardIp) {
+          const forwardUrl = `http://${forwardIp}:${forwardPort}/v1/servers/${encodeURIComponent(bot)}/runtime`;
+          const payload = {
+            runtime,
+            template: updatedEntry.template,
+            start: startFile,
+            port
+          };
+
+          console.log('[apply] forward runtime -> node', { forwardUrl, nodeId: rawNodeId, template: updatedEntry.template, version: runtime.versionId });
+          const r = await httpRequestJson(
+            forwardUrl,
+            'POST',
+            { 'Content-Type': 'application/json' },
+            payload,
+            60_000
+          );
+
+          if (r.status !== 200 || !(r.json && r.json.ok)) {
+            return res.status(502).json({
+              ok: false,
+              error: (r.json && (r.json.detail || r.json.error)) || `node-runtime-forward-failed-${r.status}`
+            });
+          }
+
+          upsertServerIndexEntry(updatedEntry);
+          return res.json({ ok: true, remote: true, msg: 'runtime-updated', runtime });
+        }
+
+        console.warn('[apply] runtime change missing node address, applying locally', { bot, nodeId: rawNodeId });
+      }
 
       upsertServerIndexEntry(updatedEntry);
       try {
@@ -1510,6 +1643,230 @@ app.post('/api/servers/:bot/versions/apply', async (req, res) => {
   }
 });
 
+async function applyPythonRuntimeChange(bot, version){
+  const resolved = resolveTemplateForBot(bot) || {};
+  const entry = resolved.entry || {};
+  const meta = resolved.meta || {};
+
+  if (!entry && !fs.existsSync(botRoot(bot))) {
+    return { status: 404, json: { error: 'server-not-found' } };
+  }
+
+  const versionCfg = buildPythonVersionConfig(version, entry, meta);
+  if (!versionCfg) return { status: 400, json: { error: 'invalid-python-version' } };
+
+  const startFile = versionCfg.start;
+  const port = clampAppPort(entry?.port ?? meta?.port ?? 3001, 3001);
+  const runtime = {
+    providerId: 'python',
+    versionId: version,
+    image: versionCfg.docker.image,
+    tag: versionCfg.docker.tag,
+    command: versionCfg.docker.command,
+    env: {},
+    volumes: null
+  };
+
+  const updatedEntry = Object.assign({}, entry || {}, {
+    name: bot,
+    template: 'python',
+    start: startFile,
+    runtime,
+    port
+  });
+
+  if (isRemoteEntry(entry)) {
+    const rawNodeId = entry && (entry.nodeId || entry.node || entry.id || entry.uuid || null);
+    let ip = entry && (entry.ip || entry.host || null);
+    let agentPort = NODE_AGENT_PORT;
+    if ((!ip || ip === 'localhost') && rawNodeId) {
+      const node = findNodeByIdOrName(rawNodeId);
+      ip = node && (node.address || node.ip || node.host);
+      agentPort = clampApiPort(node?.api_port || NODE_AGENT_PORT);
+    }
+
+    if (ip) {
+      const forwardUrl = `http://${ip}:${agentPort}/v1/servers/${encodeURIComponent(bot)}/runtime`;
+      const payload = { runtime, template: 'python', start: startFile, port };
+      const r = await httpRequestJson(forwardUrl, 'POST', { 'Content-Type': 'application/json' }, payload, 60_000);
+      if (r.status !== 200 || !(r.json && r.json.ok)) {
+        return { status: 502, json: { error: (r.json && (r.json.detail || r.json.error)) || `node-runtime-forward-failed-${r.status}` } };
+      }
+      upsertServerIndexEntry(updatedEntry);
+      return { status: 200, json: { ok: true, remote: true, message: `Python version switched to ${versionCfg.name}. All existing files were removed.`, runtime } };
+    }
+
+    console.warn('[python-version] missing remote ip, falling back to local apply', { bot, nodeId: rawNodeId });
+  }
+
+  await wipeBotDirectory(bot);
+  await ensurePythonScaffold(bot);
+
+  upsertServerIndexEntry(updatedEntry);
+
+  try {
+    await dockerCollect(['pull', `${runtime.image}:${runtime.tag}`]);
+  } catch (e) {
+    console.warn('[python-version] docker pull failed:', e && e.message);
+  }
+
+  return { status: 200, json: { ok: true, message: `Python version switched to ${versionCfg.name}. All existing files were removed.`, runtime } };
+}
+
+app.post('/api/servers/:bot/python-version', async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
+
+  const bot = String(req.params?.bot || '').trim();
+  const version = req.body?.version;
+
+  if (!bot || !version) return res.status(400).json({ error: 'missing-params' });
+
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).json({ error: 'no access to server' });
+  }
+
+  try {
+    const result = await applyPythonRuntimeChange(bot, version);
+    return res.status(result.status).json(result.json);
+  } catch (e) {
+    console.error('[python-version] failed:', e && e.message);
+    return res.status(500).json({ error: 'server-error' });
+  }
+});
+
+async function applyNodeRuntimeChange(bot, version){
+  const resolved = resolveTemplateForBot(bot) || {};
+  const entry = resolved.entry || {};
+  const meta = resolved.meta || {};
+
+  if (!entry && !fs.existsSync(botRoot(bot))) {
+    return { status: 404, json: { error: 'server-not-found' } };
+  }
+
+  const versionCfg = buildNodeVersionConfig(version, entry, meta);
+  if (!versionCfg) return { status: 400, json: { error: 'invalid-node-version' } };
+
+  const port = clampAppPort(entry?.port ?? meta?.port ?? 3001, 3001);
+  const startFile = versionCfg.start;
+  const runtime = {
+    providerId: 'nodejs',
+    versionId: version,
+    image: versionCfg.docker.image,
+    tag: versionCfg.docker.tag,
+    command: versionCfg.docker.command,
+    env: {},
+    volumes: null
+  };
+
+  const updatedEntry = Object.assign({}, entry || {}, {
+    name: bot,
+    template: entry?.template || 'nodejs',
+    start: startFile,
+    runtime,
+    port
+  });
+
+  if (isRemoteEntry(entry)) {
+    const rawNodeId = entry && (entry.nodeId || entry.node || entry.id || entry.uuid || null);
+    let ip = entry && (entry.ip || entry.host || null);
+    let agentPort = NODE_AGENT_PORT;
+    if ((!ip || ip === 'localhost') && rawNodeId) {
+      const node = findNodeByIdOrName(rawNodeId);
+      ip = node && (node.address || node.ip || node.host);
+      agentPort = clampApiPort(node?.api_port || NODE_AGENT_PORT);
+    }
+
+    if (ip) {
+      const forwardUrl = `http://${ip}:${agentPort}/v1/servers/${encodeURIComponent(bot)}/runtime`;
+      const payload = { runtime, template: updatedEntry.template, start: startFile, port };
+      const r = await httpRequestJson(forwardUrl, 'POST', { 'Content-Type': 'application/json' }, payload, 60_000);
+      if (r.status !== 200 || !(r.json && r.json.ok)) {
+        return { status: 502, json: { error: (r.json && (r.json.detail || r.json.error)) || `node-runtime-forward-failed-${r.status}` } };
+      }
+      upsertServerIndexEntry(updatedEntry);
+      return { status: 200, json: { ok: true, remote: true, message: `Node.js version switched to ${versionCfg.name}. All existing files were removed.`, runtime } };
+    }
+
+    console.warn('[node-version] missing remote ip, falling back to local apply', { bot, nodeId: rawNodeId });
+  }
+
+  await wipeBotDirectory(bot);
+  await ensureNodeScaffold(bot, port);
+
+  upsertServerIndexEntry(updatedEntry);
+
+  try {
+    await dockerCollect(['pull', `${runtime.image}:${runtime.tag}`]);
+  } catch (e) {
+    console.warn('[node-version] docker pull failed:', e && e.message);
+  }
+
+  return { status: 200, json: { ok: true, message: `Node.js version switched to ${versionCfg.name}. All existing files were removed.`, runtime } };
+}
+
+app.post('/api/servers/:bot/node-version', async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
+
+  const bot = String(req.params?.bot || '').trim();
+  const version = req.body?.version;
+
+  if (!bot || !version) return res.status(400).json({ error: 'missing-params' });
+
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).json({ error: 'no access to server' });
+  }
+
+  try {
+    const result = await applyNodeRuntimeChange(bot, version);
+    return res.status(result.status).json(result.json);
+  } catch (e) {
+    console.error('[node-version] failed:', e && e.message);
+    return res.status(500).json({ error: 'server-error' });
+  }
+});
+
+app.post('/change-version', async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
+
+  const bot = String(req.body?.bot || '').trim();
+  const version = req.body?.version;
+
+  if (!bot || !version) return res.status(400).json({ error: 'missing-params' });
+
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).json({ error: 'no access to server' });
+  }
+
+  try {
+    const result = await applyPythonRuntimeChange(bot, version);
+    return res.status(result.status).json(result.json);
+  } catch (e) {
+    console.error('[change-version] failed:', e && e.message);
+    return res.status(500).json({ error: 'server-error' });
+  }
+});
+
+app.post('/change-node-version', async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).json({ error: 'not authenticated' });
+
+  const bot = String(req.body?.bot || '').trim();
+  const version = req.body?.version;
+
+  if (!bot || !version) return res.status(400).json({ error: 'missing-params' });
+
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).json({ error: 'no access to server' });
+  }
+
+  try {
+    const result = await applyNodeRuntimeChange(bot, version);
+    return res.status(result.status).json(result.json);
+  } catch (e) {
+    console.error('[change-node-version] failed:', e && e.message);
+    return res.status(500).json({ error: 'server-error' });
+  }
+});
+
 app.post("/api/settings/accounts/:email/add", (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
   const encoded = req.params.email || "";
@@ -1564,6 +1921,33 @@ function normalizeRelPath(rel) {
 }
 function safeJoinLocal(base, rel) {
   return safeJoinAndCheck(base, normalizeRelPath(rel));
+}
+
+function safeJoinUnix(baseDir, relPath) {
+  const cleanBase = String(baseDir || "").trim();
+  if (!cleanBase) throw new Error("invalid-base");
+  const rel = String(relPath || "").replace(/\\+/g, "/").replace(/^\/+/, "");
+  const normalized = path.posix.normalize(`/${rel}`).replace(/^\/+/, "");
+  if (normalized.includes("../")) throw new Error("invalid-path");
+  return path.posix.join(cleanBase, normalized);
+}
+
+async function nodeFsPost(node, endpoint, payload, timeoutMs = 20000) {
+  const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
+  if (!baseUrl) return { status: 0, json: null };
+  const headers = Object.assign({ "Content-Type": "application/json" }, nodeAuthHeadersFor(node, true));
+  return httpRequestJson(`${baseUrl}${endpoint}`, "POST", headers, payload, timeoutMs);
+}
+
+function resolveRemoteFsContext(botName) {
+  const entry = findServer(botName);
+  if (!isRemoteEntry(entry)) return { remote: false };
+  const node = findNodeByIdOrName(entry.nodeId);
+  if (!node) return { remote: false };
+  const safeName = sanitizeServerName(entry.name || botName);
+  if (!safeName) return { remote: false };
+  const baseDir = `${NODE_VOLUME_ROOT}/${safeName}`;
+  return { remote: true, node, baseDir };
 }
 
 async function extractZipFile(filePath, dest) {
@@ -1715,6 +2099,26 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       try { fs.unlinkSync(uploadedPath); } catch (e) {}
       return res.status(400).json({ error: "Invalid bot name" });
     }
+    const remoteCtx = resolveRemoteFsContext(bot);
+    if (remoteCtx.remote) {
+      try {
+        const targetDir = safeJoinUnix(remoteCtx.baseDir, relPath || "");
+        const payload = {
+          dir: targetDir,
+          filename: originalName,
+          data_b64: fs.readFileSync(uploadedPath).toString("base64")
+        };
+        const { status, json } = await nodeFsPost(remoteCtx.node, "/v1/fs/uploadRaw", payload, 120000);
+        try { fs.unlinkSync(uploadedPath); } catch (e) {}
+        if (status !== 200 || !json || !json.ok) return res.status(502).json({ error: "node_upload_failed" });
+        return res.json({ ok: true, msg: "Uploaded to remote node", path: path.posix.join(relPath || "", originalName) });
+      } catch (e) {
+        try { fs.unlinkSync(uploadedPath); } catch (e2) {}
+        console.error("[upload->remote] failed:", e && e.message ? e.message : e);
+        return res.status(500).json({ error: "Failed to upload to node" });
+      }
+    }
+
     const base = path.resolve(BOTS_DIR);
     const targetDir = relPath ? path.join(BOTS_DIR, bot, relPath) : path.join(BOTS_DIR, bot);
     const resolvedTarget = path.resolve(targetDir);
@@ -2091,6 +2495,199 @@ function providerSupportsTemplate(provider, tpl){
   return providerTemplates(provider).includes(normalized);
 }
 
+function sanitizePythonVersionTag(version){
+  const raw = (version || '').toString().trim();
+  if (!raw) return null;
+  const clean = raw.replace(/^v/, '');
+  if (!/^[A-Za-z0-9._-]+$/.test(clean)) return null;
+  return clean;
+}
+
+function sanitizeNodeVersionTag(version){
+  const raw = (version || '').toString().trim();
+  if (!raw) return null;
+  const clean = raw.replace(/^v/, '');
+  if (!/^[0-9]+(?:\.[0-9]+){1,2}(?:[-a-zA-Z0-9.]*)?$/.test(clean)) return null;
+  return clean;
+}
+
+function inferPythonStart(entry, meta){
+  const candidates = [entry?.start, meta?.start, 'main.py'];
+  for (const c of candidates){
+    if (!c) continue;
+    const s = String(c).trim();
+    if (!s) continue;
+    if (s.toLowerCase().endsWith('.py')) return s;
+  }
+  return 'main.py';
+}
+
+function inferNodeStart(entry, meta){
+  const candidates = [entry?.start, meta?.start, 'index.js'];
+  for (const c of candidates){
+    if (!c) continue;
+    const s = String(c).trim();
+    if (!s) continue;
+    if (s.toLowerCase().endsWith('.js')) return s;
+  }
+  return 'index.js';
+}
+
+function buildPythonVersionConfig(versionId, entry, meta){
+  const clean = sanitizePythonVersionTag(versionId);
+  if (!clean) return null;
+  const startFile = inferPythonStart(entry, meta);
+  return {
+    id: versionId,
+    name: clean,
+    label: `Python ${clean}`,
+    start: startFile,
+    docker: {
+      image: 'python',
+      tag: `${clean}-slim`,
+      command: `python /app/${startFile}`
+    }
+  };
+}
+
+function buildNodeVersionConfig(versionId, entry, meta){
+  const clean = sanitizeNodeVersionTag(versionId);
+  if (!clean) return null;
+  const startFile = inferNodeStart(entry, meta);
+  return {
+    id: versionId,
+    name: clean,
+    label: `Node.js ${clean}`,
+    start: startFile,
+    docker: {
+      image: 'node',
+      tag: `${clean}-alpine`,
+      command: `sh -c "cd /app && npm install && node /app/${startFile}"`
+    }
+  };
+}
+
+const PYTHON_MAIN_TEMPLATE = `def greet(name="World"):
+    return f"Hello, {name}!"
+
+if __name__ == "__main__":
+    print("--- Starting main.py execution ---")
+
+    user_name = "ADPanel"
+    message_1 = greet(user_name)
+    print(f"Message 1: {message_1}")
+
+    message_2 = greet()
+    print(f"Message 2: {message_2}")
+
+    print("--- Execution finished ---")
+`;
+
+function buildNodeIndexTemplate(port){
+  const p = clampAppPort(port, 3001);
+  return `const express = require("express");
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("Hello World from ADPanel!");
+});
+
+const PORT = ${p};
+
+app.listen(PORT, () => {
+  console.log(\`Server running on http://localhost:${p}\`);
+});
+`;
+}
+
+async function ensurePythonScaffold(bot){
+  const botDir = botRoot(bot);
+  await fsp.mkdir(botDir, { recursive: true });
+  const mainPath = path.join(botDir, 'main.py');
+  try {
+    await fsp.writeFile(mainPath, PYTHON_MAIN_TEMPLATE, 'utf8');
+  } catch (e) {
+    console.warn('[python-runtime] failed to scaffold main.py:', e && e.message);
+  }
+}
+
+async function ensureNodeScaffold(bot, port){
+  const botDir = botRoot(bot);
+  await fsp.mkdir(botDir, { recursive: true });
+  const idxPath = path.join(botDir, 'index.js');
+  const pkgPath = path.join(botDir, 'package.json');
+  const desiredContent = buildNodeIndexTemplate(port);
+
+  try {
+    if (!fs.existsSync(idxPath)) {
+      await fsp.writeFile(idxPath, desiredContent, 'utf8');
+    } else {
+      const current = await fsp.readFile(idxPath, 'utf8');
+      if (current.includes('Hello World from ADPanel!')) {
+        await fsp.writeFile(idxPath, desiredContent, 'utf8');
+      }
+    }
+  } catch (e) {
+    console.warn('[node-runtime] failed to ensure index.js:', e && e.message);
+  }
+
+  const pkg = {
+    name: path.basename(botDir),
+    private: true,
+    version: '1.0.0',
+    main: 'index.js',
+    scripts: { start: 'node index.js' },
+    dependencies: { express: '^4.19.2' }
+  };
+
+  try {
+    if (!fs.existsSync(pkgPath)) {
+      await fsp.writeFile(pkgPath, JSON.stringify(pkg, null, 2), 'utf8');
+    }
+  } catch (e) {
+    console.warn('[node-runtime] failed to scaffold package.json:', e && e.message);
+  }
+}
+
+async function wipeBotDirectory(bot){
+  const dir = botRoot(bot);
+  try {
+    await fsp.rm(dir, { recursive: true, force: true });
+  } catch (e) {
+    console.warn('[python-runtime] failed to remove bot directory before recreate:', e && e.message);
+  }
+  try {
+    await fsp.mkdir(dir, { recursive: true });
+  } catch (e) {
+    console.warn('[python-runtime] failed to recreate bot directory:', e && e.message);
+    throw e;
+  }
+}
+
+async function runOfflineNpmInstall(bot, command){
+  const entry = findServer(bot) || {};
+  if (isRemoteEntry(entry)) {
+    _emitLine(bot, "[ADPanel] npm install is not supported on remote nodes yet");
+    return;
+  }
+
+  const installCmd = (command && command.trim()) ? command.trim() : 'npm install';
+  const { image, tag } = resolveNodeRuntimeImage(entry);
+  const botDir = botRoot(bot);
+  const args = ['run', '--rm', '-v', `${botDir}:/app`, '-w', '/app', `${image}:${tag}`, 'sh', '-lc', `cd /app && ${installCmd}`];
+  const p = docker(args);
+  if (!p) {
+    _emitLine(bot, "[ADPanel] failed to start npm install");
+    return;
+  }
+  p.stdout.on('data', d => emitChunkLines(bot, d));
+  p.stderr.on('data', d => emitChunkLines(bot, d));
+  return new Promise(resolve => {
+    p.on('close', () => resolve());
+    p.on('error', () => resolve());
+  });
+}
+
 function readBotMeta(bot){
   try {
     const p = path.join(BOTS_DIR, bot, 'adpanel.json');
@@ -2120,6 +2717,50 @@ function providersForTemplate(tpl){
     ? versionsConfig
     : (versionsConfig.providers || []);
   return providers.filter(p => providerSupportsTemplate(p, tpl));
+}
+
+async function fetchPythonTagsFromGitHub(){
+  const url = 'https://api.github.com/repos/python/cpython/tags';
+  return await fetchJson(url);
+}
+
+function mapPythonTagsToVersions(tags){
+  const list = Array.isArray(tags) ? tags : [];
+  return list.map(tag => {
+    const raw = (tag && tag.name) ? String(tag.name) : '';
+    const clean = sanitizePythonVersionTag(raw) || raw;
+    return {
+      id: raw,
+      name: clean,
+      label: `Python ${clean || raw || 'unknown'}`,
+      releaseDate: '',
+      tags: ['PYTHON']
+    };
+  });
+}
+
+async function fetchNodeVersionsIndex(){
+  const url = 'https://nodejs.org/dist/index.json';
+  return await fetchJson(url);
+}
+
+function mapNodeVersionsToList(list){
+  const arr = Array.isArray(list) ? list : [];
+  return arr
+    .filter(v => v && typeof v.version === 'string' && /^v?\d+\.\d+\.\d+/.test(v.version))
+    .map(v => {
+      const clean = sanitizeNodeVersionTag(v.version) || v.version;
+      const tags = [];
+      if (v.lts) tags.push('LTS');
+      if (!v.lts) tags.push('LATEST');
+      return {
+        id: v.version,
+        name: clean,
+        label: `Node.js ${clean || v.version}`,
+        releaseDate: v.date || '',
+        tags
+      };
+    });
 }
 
 function findProviderConfig(providerId){
@@ -2372,6 +3013,13 @@ function clampPort(p) {
   if (n < 1 || n > 35650) return 25565;
   return n;
 }
+
+function clampAppPort(p, fallback = 3001) {
+  const n = Number(p);
+  if (!Number.isInteger(n)) return fallback;
+  if (n < 1 || n > 65535) return fallback;
+  return n;
+}
 function setMinecraftServerPort(botDir, port) {
   const propsPath = path.join(botDir, "server.properties");
   let content = "";
@@ -2514,7 +3162,7 @@ app.post("/api/servers/create", async (req, res) => {
     // porțiuni comune pentru indexare + ACL
     function startFileFor(templateId) {
       if (templateId === "minecraft") return "server.jar";
-      if (templateId === "discord-bot") return "index.js";
+      if (templateId === "discord-bot" || templateId === "nodejs") return "index.js";
       return null;
     }
 
@@ -2541,7 +3189,9 @@ app.post("/api/servers/create", async (req, res) => {
       } catch {}
 
       try {
-        const savedPort = templateId === "minecraft" ? clampPort(hostPortRaw) : null;
+        const savedPort = templateId === "minecraft"
+          ? clampPort(hostPortRaw)
+          : (templateId === "nodejs" ? clampAppPort(hostPortRaw, 3001) : null);
         const entry = {
           name,
           template: templateId,
@@ -2609,10 +3259,14 @@ const extraEnv = {
       runTemplateContainerNow(name, "minecraft", botDir, extraEnv, overrideDocker);
 
       startFileForIndex = "server.jar";
-    } else if (templateId === "discord-bot") {
-      writeDiscordBotScaffold(botDir);
+    } else if (templateId === "discord-bot" || templateId === "nodejs") {
+      const hostPort = clampAppPort(hostPortRaw, 3001);
+      savedPort = hostPort;
+
+      await ensureNodeScaffold(name, hostPort);
       await pullImage("node:20-alpine");
-      runTemplateContainerNow(name, "discord-bot", botDir, {});
+      const overrideDocker = { ports: [`${hostPort}:${hostPort}`] };
+      runTemplateContainerNow(name, templateId === "nodejs" ? "nodejs" : "discord-bot", botDir, {}, overrideDocker);
       startFileForIndex = "index.js";
     } else if (templateId === "vanilla") {
       await pullImage("alpine:latest");
@@ -2655,12 +3309,98 @@ const extraEnv = {
   }
 });
 
+app.post("/create", async (req, res) => {
+  if (!isAuthenticated(req)) return res.status(401).send("Not authenticated");
+
+  const { bot, type, name } = req.body || {};
+  const relPath = (req.body && typeof req.body.path !== "undefined") ? String(req.body.path) : "";
+
+  const normalizedType = String(type || "").trim().toLowerCase();
+  if (!bot || !normalizedType || !name) return res.status(400).send("Missing fields");
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, bot)) {
+    return res.status(403).send("Not authorized");
+  }
+
+  if (normalizedType !== "file" && normalizedType !== "folder") {
+    return res.status(400).send("Invalid type");
+  }
+
+  const safeName = String(name).trim();
+  if (!safeName || safeName.includes("..") || /[\\/]/.test(safeName)) {
+    return res.status(400).send("Invalid name");
+  }
+
+  const remoteCtx = resolveRemoteFsContext(bot);
+
+  if (remoteCtx.remote) {
+    try {
+      const relativePosix = path.posix.join(relPath || "", safeName);
+      const target = safeJoinUnix(remoteCtx.baseDir, relativePosix);
+
+      const payload = normalizedType === "folder"
+        ? { path: safeJoinUnix(target, ".keep"), content: "", encoding: "utf8" }
+        : { path: target, content: "", encoding: "utf8" };
+
+      const { status, json } = await nodeFsPost(remoteCtx.node, "/v1/fs/write", payload);
+      if (status !== 200 || !json || !json.ok) throw new Error("remote-create-failed");
+
+      return res.json({ ok: true, path: relativePosix });
+    } catch (e) {
+      console.error("[create] remote failed:", e && e.message ? e.message : e);
+      return res.status(500).send("Create failed");
+    }
+  }
+
+  const root = path.join(BOTS_DIR, bot);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return res.status(404).send("Server not found");
+  }
+
+  const target = safeJoinLocal(root, path.join(relPath || "", safeName));
+  if (!target) return res.status(400).send("Invalid path");
+
+  if (fs.existsSync(target)) return res.status(400).send("Already exists");
+
+  try {
+    if (normalizedType === "folder") {
+      await fsp.mkdir(target, { recursive: true });
+    } else {
+      await fsp.mkdir(path.dirname(target), { recursive: true });
+      await fsp.writeFile(target, "", "utf8");
+    }
+    return res.json({ ok: true, path: path.relative(root, target) });
+  } catch (e) {
+    console.error("[create] failed:", e && e.message ? e.message : e);
+    return res.status(500).send("Create failed");
+  }
+});
+
 app.post("/rename", (req, res) => {
   const { bot, oldPath, newName } = req.body || {};
   if (!bot || !oldPath || !newName) return res.status(400).send("Missing fields");
   const safeNewName = String(newName).trim();
   if (safeNewName === "" || safeNewName.includes("..") || safeNewName.includes("/") || safeNewName.includes("\\")) {
     return res.status(400).send("Invalid new name");
+  }
+  const remoteCtx = resolveRemoteFsContext(bot);
+  if (remoteCtx.remote) {
+    const relative = path.posix.join(path.posix.dirname(path.posix.join(oldPath)), safeNewName);
+    try {
+      const src = safeJoinUnix(remoteCtx.baseDir, oldPath);
+      const dest = safeJoinUnix(remoteCtx.baseDir, relative);
+      nodeFsPost(remoteCtx.node, "/v1/fs/rename", { src, dest })
+        .then(({ status, json }) => {
+          if (status !== 200 || !json || !json.ok) return res.status(500).send("Rename failed");
+          return res.json({ ok: true, path: relative });
+        })
+        .catch((e) => {
+          console.error("[rename] remote failed:", e && e.message ? e.message : e);
+          return res.status(500).send("Rename failed");
+        });
+    } catch (e) {
+      return res.status(400).send("Invalid path");
+    }
+    return;
   }
   const base = path.resolve(BOTS_DIR);
   const oldFull = path.resolve(path.join(BOTS_DIR, bot, oldPath));
@@ -2793,6 +3533,7 @@ app.get('/api/servers/:bot/versions', (req, res) => {
 
   const bot = req.params.bot;
   const { entry, template } = resolveTemplateForBot(bot);
+  const t = normalizeTemplateId(template);
   if (!entry && !fs.existsSync(botRoot(bot))) {
     return res.status(404).json({ error: 'server-not-found' });
   }
@@ -2807,13 +3548,16 @@ app.get('/api/servers/:bot/versions', (req, res) => {
   return res.json({ providers });
 });
 
-app.get('/api/servers/:bot/versions/:providerId', (req, res) => {
+app.get('/api/servers/:bot/versions/:providerId', async (req, res) => {
   if (!isAuthenticated(req)) return res.status(401).json({ error: "not authenticated" });
 
   const bot = req.params.bot;
   const providerId = req.params.providerId;
 
-  const { entry, template } = resolveTemplateForBot(bot);
+  const resolved = resolveTemplateForBot(bot);
+  const entry = resolved.entry;
+  const template = resolved.template;
+
   if (!entry && !fs.existsSync(botRoot(bot))) {
     return res.status(404).json({ error: 'server-not-found' });
   }
@@ -2822,6 +3566,38 @@ app.get('/api/servers/:bot/versions/:providerId', (req, res) => {
 
   if (!provider) {
     return res.status(404).json({ error: 'provider-not-found' });
+  }
+
+  if (provider.id === 'python') {
+    try {
+      const tags = await fetchPythonTagsFromGitHub();
+      const versions = mapPythonTagsToVersions(tags);
+      return res.json({
+        provider: provider.id,
+        displayName: provider.name,
+        description: provider.description,
+        versions
+      });
+    } catch (e) {
+      console.warn('[versions] failed to load python tags:', e && e.message);
+      return res.status(502).json({ error: 'python-versions-unavailable' });
+    }
+  }
+
+  if (provider.id === 'nodejs') {
+    try {
+      const idx = await fetchNodeVersionsIndex();
+      const versions = mapNodeVersionsToList(idx);
+      return res.json({
+        provider: provider.id,
+        displayName: provider.name,
+        description: provider.description,
+        versions
+      });
+    } catch (e) {
+      console.warn('[versions] failed to load node versions:', e && e.message);
+      return res.status(502).json({ error: 'node-versions-unavailable' });
+    }
   }
 
   return res.json({
@@ -2842,7 +3618,12 @@ io.on("connection", (socket) => {
     const name = (botName || "").toString().trim();
     if (!name) return;
     try { socket.join(name); } catch (_) {}
-});
+    try {
+      if (buffers[name] && buffers[name].length) {
+        socket.emit("output", buffers[name].join("\n") + "\n");
+      }
+    } catch {}
+  });
   // helpers vizibile DOAR pentru conexiunea curentă
   function deny(botName, msg = "Permission denied") {
     io.to(botName).emit("output", msg);
@@ -2855,9 +3636,18 @@ io.on("connection", (socket) => {
 
 socket.on('readFile', async ({ bot, path: rel }) => {
   try {
-    const abs = safeResolve(bot, rel);
-    const content = await readText(abs);
-    io.to(bot).emit('fileData', { path: rel, content });
+    const ctx = resolveRemoteFsContext(bot);
+    if (ctx.remote) {
+      const full = safeJoinUnix(ctx.baseDir, rel || "");
+      const { status, json } = await nodeFsPost(ctx.node, "/v1/fs/read", { path: full, encoding: "utf8" });
+      if (status !== 200 || !json || !json.ok) throw new Error('remote-read-failed');
+      const content = typeof json.content === 'string' ? json.content : '';
+      io.to(bot).emit('fileData', { path: rel, content });
+    } else {
+      const abs = safeResolve(bot, rel);
+      const content = await readText(abs);
+      io.to(bot).emit('fileData', { path: rel, content });
+    }
   } catch (err) {
     io.to(bot).emit('fileData', { path: rel, content: `/* ERROR: ${err.message} */` });
   }
@@ -2865,10 +3655,18 @@ socket.on('readFile', async ({ bot, path: rel }) => {
 
 socket.on('writeFile', async ({ bot, path: rel, content }) => {
   try {
-    const abs = safeResolve(bot, rel);
-    await fsp.mkdir(path.dirname(abs), { recursive: true });
-    await fsp.writeFile(abs, content ?? '', 'utf8');
-    io.to(bot).emit('toast', { type: 'success', msg: `Saved ${rel}` });
+    const ctx = resolveRemoteFsContext(bot);
+    if (ctx.remote) {
+      const full = safeJoinUnix(ctx.baseDir, rel || "");
+      const { status, json } = await nodeFsPost(ctx.node, "/v1/fs/write", { path: full, content: content ?? '', encoding: "utf8" });
+      if (status !== 200 || !json || !json.ok) throw new Error('remote-write-failed');
+      io.to(bot).emit('toast', { type: 'success', msg: `Saved ${rel}` });
+    } else {
+      const abs = safeResolve(bot, rel);
+      await fsp.mkdir(path.dirname(abs), { recursive: true });
+      await fsp.writeFile(abs, content ?? '', 'utf8');
+      io.to(bot).emit('toast', { type: 'success', msg: `Saved ${rel}` });
+    }
   } catch (err) {
     io.to(bot).emit('toast', { type: 'error', msg: `Save failed: ${err.message}` });
   }
@@ -2876,9 +3674,17 @@ socket.on('writeFile', async ({ bot, path: rel, content }) => {
 
 socket.on('deleteFile', async ({ bot, path: rel }) => {
   try {
-    const abs = safeResolve(bot, rel);
-    await fsp.rm(abs, { recursive: true, force: true });
-    io.to(bot).emit('toast', { type: 'success', msg: `Deleted ${rel}` });
+    const ctx = resolveRemoteFsContext(bot);
+    if (ctx.remote) {
+      const full = safeJoinUnix(ctx.baseDir, rel || "");
+      const { status, json } = await nodeFsPost(ctx.node, "/v1/fs/delete", { path: full, isDir: rel?.endsWith('/') });
+      if (status !== 200 || !json || !json.ok) throw new Error('remote-delete-failed');
+      io.to(bot).emit('toast', { type: 'success', msg: `Deleted ${rel}` });
+    } else {
+      const abs = safeResolve(bot, rel);
+      await fsp.rm(abs, { recursive: true, force: true });
+      io.to(bot).emit('toast', { type: 'success', msg: `Deleted ${rel}` });
+    }
   } catch (err) {
     io.to(bot).emit('toast', { type: 'error', msg: `Delete failed: ${err.message}` });
   }
@@ -2946,10 +3752,50 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
                 CUSTOM_SERVER: "/data/server.jar",
                 SERVER_PORT: String(hostPort)
               });
-            } else if (overrideDocker && typeof overrideDocker === "object") {
-              if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
-              if (overrideDocker.env) {
-                tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
+            } else {
+              const portFromEntry = entry && entry.port ? clampAppPort(entry.port, 3001) : null;
+              const mappedPort = clampAppPort(port || portFromEntry || 3001, 3001);
+              if (!tplCopy.docker.ports || tplCopy.docker.ports.length === 0) {
+                tplCopy.docker.ports = [`${mappedPort}:${mappedPort}`];
+              }
+              tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, { PORT: String(mappedPort) });
+
+              if (overrideDocker && typeof overrideDocker === "object") {
+                if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
+                if (overrideDocker.env) {
+                  tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
+                }
+                if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
+                if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
+                if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
+                if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
+                if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
+              }
+              tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, { PORT: String(mappedPort) });
+
+              if (overrideDocker && typeof overrideDocker === "object") {
+                if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
+                if (overrideDocker.env) {
+                  tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
+                }
+                if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
+                if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
+                if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
+                if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
+                if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
+              }
+              tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, { PORT: String(mappedPort) });
+
+              if (overrideDocker && typeof overrideDocker === "object") {
+                if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
+                if (overrideDocker.env) {
+                  tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
+                }
+                if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
+                if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
+                if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
+                if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
+                if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
               }
               if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
               if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
@@ -3064,17 +3910,32 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
     }
   });
 
-  socket.on("command", ({ bot, command }) => {
+  socket.on("command", async ({ bot, command }) => {
     if (bot) { try { socket.join(bot); } catch {} }
     if (!hasPerm(bot, "console_write")) return deny(bot);
-    if (!command || !command.trim()) return;
+    const trimmed = (command || '').toString().trim();
+    if (!trimmed) return;
 
     if (isMinecraftBot(bot)) {
       const cp = docker(["exec", "--user", "1000", bot, "mc-send-to-console", command]);
       cp.stdout.on("data", d => emitChunkLines(bot, d));
       cp.stderr.on("data", d => emitChunkLines(bot, d));
     } else {
-      const cp = docker(["exec", "-i", bot, "sh", "-lc", command]);
+      const entry = findServer(bot);
+      const isNpmInstall = /^npm\s+i(nstall)?(\s|$)/i.test(trimmed);
+
+      if (isNpmInstall && !await isContainerRunning(bot)) {
+        await runOfflineNpmInstall(bot, trimmed);
+        return;
+      }
+
+      if (isNpmInstall && isRemoteEntry(entry)) {
+        _emitLine(bot, "[ADPanel] npm install is not supported on remote nodes yet");
+        return;
+      }
+
+      const execCmd = (isNpmInstall ? `cd /app && ${trimmed}` : trimmed);
+      const cp = docker(["exec", "-i", bot, "sh", "-lc", execCmd]);
       cp.stdout.on("data", d => emitChunkLines(bot, d));
       cp.stderr.on("data", d => emitChunkLines(bot, d));
     }
