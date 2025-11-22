@@ -808,6 +808,15 @@ function findTemplateById(id) {
   return loadTemplatesFile().find(t => String(t?.id || "").toLowerCase() === key) || null;
 }
 
+function findServersUsingTemplate(id) {
+  const key = normalizeTemplateId(id);
+  if (!key) return [];
+  return loadServersIndex()
+    .filter(entry => normalizeTemplateId(entry?.template) === key)
+    .map(entry => entry?.name)
+    .filter(Boolean);
+}
+
 ensureTemplatesFile();
 
 app.get("/api/templates", (req, res) => res.json({ templates: loadTemplatesFile() }));
@@ -852,6 +861,26 @@ app.post("/api/settings/templates", (req, res) => {
   list.push(tpl);
   if (!saveTemplatesFile(list)) return res.status(500).json({ error: "failed to save templates" });
   return res.json({ ok: true, template: tpl });
+});
+
+app.delete("/api/settings/templates/:id", (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
+  const rawId = req.params.id || "";
+  const cleanId = normalizeTemplateId(rawId);
+  if (!cleanId) return res.status(400).json({ error: "invalid template id" });
+
+  const list = loadTemplatesFile();
+  const idx = list.findIndex(t => normalizeTemplateId(t?.id) === cleanId);
+  if (idx < 0) return res.status(404).json({ error: "template not found" });
+
+  const servers = findServersUsingTemplate(cleanId);
+  if (servers.length > 0) {
+    return res.status(400).json({ error: "template in use", servers });
+  }
+
+  list.splice(idx, 1);
+  if (!saveTemplatesFile(list)) return res.status(500).json({ error: "failed to save templates" });
+  return res.json({ ok: true, removed: cleanId });
 });
 
 // --- LOGIN / REGISTER ---

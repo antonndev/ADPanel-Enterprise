@@ -321,8 +321,8 @@
                     <button class="btn" id="openCreateTemplate"><i class="fa-solid fa-plus"></i> Create</button>
                   </div>
                 </div>
-
-                <div id="templatesList" style="margin-top:12px;display:grid;gap:8px"></div>
+                <div id="templatesFeedback" class="muted" style="margin-top:8px"></div>
+                <div id="templatesList" style="margin-top:12px;display:grid;gap:12px"></div>
               </div>
 
               <div id="integrations" class="panel-section">
@@ -383,19 +383,56 @@
   <!-- Create template modal -->
   <div id="createTemplateOverlay" class="modal-overlay" aria-hidden="true">
     <div class="modal" id="createTemplateModal">
-      <h3><i class="fa-solid fa-boxes-stacked"></i> Create template</h3>
-      <div style="margin-top:10px;display:grid;gap:8px">
-        <input type="text" id="ct_name" placeholder="Template name" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06)">
-        <input type="text" id="ct_id" placeholder="Template id (lowercase, a-z 0-9 - _)" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06)">
-        <textarea id="ct_description" placeholder="Short description" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06);"></textarea>
-        <input type="text" id="ct_image" placeholder="Docker image (e.g. itzg/minecraft-server)" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06)">
-        <input type="text" id="ct_tag" placeholder="Tag (e.g. latest)" style="padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06)" value="latest">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-boxes-stacked"></i> Create template</h3>
+        <div style="font-size:12px;color:var(--muted)">Inspired by 2025 design systems — layered glass, bold gradients and calm typography.</div>
       </div>
-      <div class="actions" style="margin-top:12px">
-        <button class="btn ghost" id="createTemplateCancel">Cancel</button>
-        <button class="btn" id="createTemplateSave"><i class="fa-solid fa-plus"></i> Create</button>
+
+      <div style="margin-top:12px;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));align-items:start">
+        <div style="display:grid;gap:10px;padding:14px;border-radius:14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);backdrop-filter:blur(8px)">
+          <label style="display:grid;gap:4px;font-weight:600">Template name
+            <input type="text" id="ct_name" placeholder="e.g. Minecraft" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);background:rgba(0,0,0,0.25)">
+          </label>
+          <label style="display:grid;gap:4px;font-weight:600">Template ID
+            <input type="text" id="ct_id" placeholder="Lowercase, a-z 0-9 - _" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);background:rgba(0,0,0,0.25)">
+          </label>
+          <label style="display:grid;gap:4px;font-weight:600">Description
+            <textarea id="ct_description" placeholder="Explain what the template does" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);min-height:72px;background:rgba(0,0,0,0.25);"></textarea>
+          </label>
+          <label style="display:grid;gap:4px;font-weight:600">Docker image
+            <input type="text" id="ct_image" placeholder="itzg/minecraft-server" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);background:rgba(0,0,0,0.25)">
+            <small class="muted" style="font-size:12px">We’ll pull this image automatically when the template is used.</small>
+          </label>
+          <label style="display:grid;gap:4px;font-weight:600">Tag
+            <input type="text" id="ct_tag" placeholder="latest" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);background:rgba(0,0,0,0.25)" value="latest">
+          </label>
+
+          <div class="actions" style="margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn ghost" id="createTemplateCancel">Cancel</button>
+            <button class="btn" id="createTemplateSave"><i class="fa-solid fa-plus"></i> Create</button>
+          </div>
+          <div id="createTemplateFeedback" class="muted" style="margin-top:2px"></div>
+        </div>
+
+        <div style="padding:16px;border-radius:16px;background:linear-gradient(135deg, rgba(99,102,241,0.35), rgba(236,72,153,0.25));border:1px solid rgba(255,255,255,0.08);box-shadow:0 15px 40px rgba(0,0,0,0.25);color:#e9e9f5;min-height:100%">
+          <div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;margin-bottom:8px">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:12px;background:rgba(255,255,255,0.12);backdrop-filter:blur(6px)"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+            <div>
+              <div>Modern build — ready for 2025</div>
+              <small style="color:rgba(233,233,245,0.8);font-weight:400">Consistent geometry, soft gradients, glass panels.</small>
+            </div>
+          </div>
+          <ul style="padding-left:18px;display:grid;gap:6px;margin:0">
+            <li>Use clear IDs so templates stay portable across nodes.</li>
+            <li>Pair images and tags to keep deployments reproducible.</li>
+            <li>Add concise descriptions; they show up in the create flow.</li>
+            <li>Docker volumes default to <code>{BOT_DIR}:/data</code> for safety.</li>
+          </ul>
+          <div style="margin-top:12px;padding:10px;border-radius:12px;background:rgba(255,255,255,0.08);color:#f6f7fb;font-size:13px">
+            Tip: keep tags pinned (e.g. <code>1.21.1</code>) for stability, or use <code>latest</code> for bleeding-edge.
+          </div>
+        </div>
       </div>
-      <div id="createTemplateFeedback" class="muted" style="margin-top:6px"></div>
     </div>
   </div>
 
@@ -616,6 +653,7 @@
     const permCancel = document.getElementById('permCancel');
     const permSave = document.getElementById('permSave');
 
+    const templatesFeedbackEl = document.getElementById('templatesFeedback');
     const templatesListEl = document.getElementById('templatesList');
     const openCreateTemplateBtn = document.getElementById('openCreateTemplate');
     const createTemplateOverlay = document.getElementById('createTemplateOverlay');
@@ -1029,12 +1067,14 @@ function renderServers(list){
     // ======== Templates ========
     async function loadTemplates(){
       if(!templatesListEl) return;
+      if(templatesFeedbackEl) templatesFeedbackEl.textContent = '';
       templatesListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">Loading templates…</div>`;
       try {
         const res = await fetch('/api/settings/templates');
         if(!res.ok){
           const err = await res.json().catch(()=>({error:'failed'}));
           templatesListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">Failed to load templates</div>`;
+          if(templatesFeedbackEl) templatesFeedbackEl.textContent = err.error || 'Unable to load templates.';
           console.warn(err);
           return;
         }
@@ -1049,7 +1089,7 @@ function renderServers(list){
     function renderTemplates(list){
       if(!templatesListEl) return;
       if(!Array.isArray(list) || list.length === 0){
-        templatesListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">No templates found. Create one to get started.</div>`;
+        templatesListEl.innerHTML = `<div style="padding:16px;border:1px dashed rgba(255,255,255,0.08);border-radius:12px;background:rgba(255,255,255,0.02);color:var(--muted)">No templates found. Create one to get started.</div>`;
         return;
       }
       templatesListEl.innerHTML = '';
@@ -1057,16 +1097,27 @@ function renderServers(list){
         const row = document.createElement('div');
         row.className = 'server-row clickable-card';
         row.innerHTML = `
-          <div class="left">
-            <div class="iconWrap"><i class="fa-solid fa-boxes-stacked"></i></div>
-            <div>
-              <div class="name">${escapeHtml(tpl.name || tpl.id)}</div>
-              <div style="color:var(--muted);font-size:13px">${escapeHtml(tpl.description || 'No description')}</div>
-              <div style="color:var(--muted);font-size:12px;margin-top:4px">${escapeHtml((tpl.docker && tpl.docker.image) ? `${tpl.docker.image}:${tpl.docker.tag || 'latest'}` : 'Custom Docker')}</div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.08);box-shadow:0 12px 30px rgba(0,0,0,0.2);backdrop-filter:blur(6px)">
+            <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start">
+              <div class="iconWrap" style="background:rgba(255,255,255,0.08);color:#fff;border-radius:12px;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center"><i class="fa-solid fa-boxes-stacked"></i></div>
+              <div style="display:grid;gap:6px;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <div class="name">${escapeHtml(tpl.name || tpl.id)}</div>
+                  <span class="inline-badge" style="background:rgba(99,102,241,0.1);color:#cdd1ff;border:1px solid rgba(99,102,241,0.25)">ID: ${escapeHtml(tpl.id || '—')}</span>
+                </div>
+                <div style="color:var(--muted);font-size:13px;line-height:1.5">${escapeHtml(tpl.description || 'No description')}</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+                  <span style="padding:6px 10px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)"><i class="fa-solid fa-cube"></i> ${escapeHtml((tpl.docker && tpl.docker.image) ? tpl.docker.image : 'Custom image')}</span>
+                  <span style="padding:6px 10px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)"><i class="fa-solid fa-tag"></i> ${escapeHtml((tpl.docker && tpl.docker.tag) ? tpl.docker.tag : 'latest')}</span>
+                  <span style="padding:6px 10px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)"><i class="fa-solid fa-folder-tree"></i> ${escapeHtml((tpl.docker && tpl.docker.volumes && tpl.docker.volumes.length) ? tpl.docker.volumes.join(', ') : '{BOT_DIR}:/data')}</span>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="actions">
-            <span class="inline-badge">ID: ${escapeHtml(tpl.id || '—')}</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn ghost delete-template" data-id="${encodeURIComponent(tpl.id || '')}" data-name="${encodeURIComponent(tpl.name || tpl.id || '')}" title="Delete template" style="border-color:rgba(239,68,68,0.35);color:#fca5a5">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
           </div>
         `;
         templatesListEl.appendChild(row);
@@ -1141,6 +1192,44 @@ function renderServers(list){
         } finally {
           createTemplateSave.disabled = false;
         }
+      });
+    }
+
+    async function deleteTemplate(templateId, templateName, btn){
+      if(!templateId) return;
+      if(!confirm(`Delete template "${templateName || templateId}"? It cannot be undone.`)) return;
+      try {
+        if(btn){
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        }
+        const res = await fetch(`/api/settings/templates/${encodeURIComponent(templateId)}`, { method: 'DELETE' });
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok){
+          const serversMsg = Array.isArray(data.servers) && data.servers.length ? ` In use by: ${data.servers.join(', ')}` : '';
+          if(templatesFeedbackEl) templatesFeedbackEl.textContent = (data.error || 'Failed to delete template.') + serversMsg;
+          return;
+        }
+        if(templatesFeedbackEl) templatesFeedbackEl.textContent = `Template "${templateName || templateId}" deleted.`;
+        loadTemplates();
+      } catch (err) {
+        console.error(err);
+        if(templatesFeedbackEl) templatesFeedbackEl.textContent = 'Network error while deleting template.';
+      } finally {
+        if(btn){
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+        }
+      }
+    }
+
+    if(templatesListEl){
+      templatesListEl.addEventListener('click', (e)=>{
+        const btn = e.target.closest('.delete-template');
+        if(!btn) return;
+        const id = decodeURIComponent(btn.dataset.id || '');
+        const name = decodeURIComponent(btn.dataset.name || '') || id;
+        deleteTemplate(id, name, btn);
       });
     }
 
