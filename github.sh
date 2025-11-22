@@ -12,4 +12,4 @@ git add .
 
 git commit -m "ADPanel Update"
 
-git push --set-upstream origin main
+git push --force --set-upstream origin main
