@@ -322,7 +322,7 @@
                   </div>
                 </div>
                 <div id="templatesFeedback" class="muted" style="margin-top:8px"></div>
-                <div id="templatesList" style="margin-top:12px;display:grid;gap:12px"></div>
+                <div id="templatesList" class="templates-grid" style="margin-top:12px"></div>
               </div>
 
               <div id="integrations" class="panel-section">
@@ -1095,26 +1095,24 @@ function renderServers(list){
       templatesListEl.innerHTML = '';
       list.forEach(tpl => {
         const row = document.createElement('div');
-        row.className = 'server-row clickable-card';
+        row.className = 'template-card clickable-card';
         row.innerHTML = `
-          <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.08);box-shadow:0 12px 30px rgba(0,0,0,0.2);backdrop-filter:blur(6px)">
-            <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start">
-              <div class="iconWrap" style="background:rgba(255,255,255,0.08);color:#fff;border-radius:12px;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center"><i class="fa-solid fa-boxes-stacked"></i></div>
-              <div style="display:grid;gap:6px;min-width:0">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <div class="name">${escapeHtml(tpl.name || tpl.id)}</div>
-                  <span class="inline-badge" style="background:rgba(99,102,241,0.1);color:#cdd1ff;border:1px solid rgba(99,102,241,0.25)">ID: ${escapeHtml(tpl.id || '—')}</span>
-                </div>
-                <div style="color:var(--muted);font-size:13px;line-height:1.5">${escapeHtml(tpl.description || 'No description')}</div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
-                  <span style="padding:6px 10px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)"><i class="fa-solid fa-cube"></i> ${escapeHtml((tpl.docker && tpl.docker.image) ? tpl.docker.image : 'Custom image')}</span>
-                  <span style="padding:6px 10px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)"><i class="fa-solid fa-tag"></i> ${escapeHtml((tpl.docker && tpl.docker.tag) ? tpl.docker.tag : 'latest')}</span>
-                  <span style="padding:6px 10px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)"><i class="fa-solid fa-folder-tree"></i> ${escapeHtml((tpl.docker && tpl.docker.volumes && tpl.docker.volumes.length) ? tpl.docker.volumes.join(', ') : '{BOT_DIR}:/data')}</span>
-                </div>
+          <div class="template-card__body">
+            <div class="template-card__icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+            <div class="template-card__content">
+              <div class="template-card__title">
+                <div class="name">${escapeHtml(tpl.name || tpl.id)}</div>
+                <span class="inline-badge">ID: ${escapeHtml(tpl.id || '—')}</span>
+              </div>
+              <div class="template-card__description">${escapeHtml(tpl.description || 'No description')}</div>
+              <div class="template-card__meta">
+                <span><i class="fa-solid fa-cube"></i> ${escapeHtml((tpl.docker && tpl.docker.image) ? tpl.docker.image : 'Custom image')}</span>
+                <span><i class="fa-solid fa-tag"></i> ${escapeHtml((tpl.docker && tpl.docker.tag) ? tpl.docker.tag : 'latest')}</span>
+                <span><i class="fa-solid fa-folder-tree"></i> ${escapeHtml((tpl.docker && tpl.docker.volumes && tpl.docker.volumes.length) ? tpl.docker.volumes.join(', ') : '{BOT_DIR}:/data')}</span>
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn ghost delete-template" data-id="${encodeURIComponent(tpl.id || '')}" data-name="${encodeURIComponent(tpl.name || tpl.id || '')}" title="Delete template" style="border-color:rgba(239,68,68,0.35);color:#fca5a5">
+            <div class="template-card__actions">
+              <button class="btn ghost delete-template" data-id="${encodeURIComponent(tpl.id || '')}" data-name="${encodeURIComponent(tpl.name || tpl.id || '')}" title="Delete template">
                 <i class="fa-solid fa-trash"></i>
               </button>
             </div>
