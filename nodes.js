@@ -1185,8 +1185,8 @@ app.post("/api/nodes/:id/server/action", async (req, res) => {
     if (!node) return res.status(404).json({ error: "not found" });
 
     const name = String((req.body && req.body.name) || "").trim();
-    const finalCmd = (cmd === "run") ? "start" : cmd;
     const cmd = String((req.body && req.body.cmd) || "").trim().toLowerCase();
+    const finalCmd = cmd === "run" ? "start" : cmd;
     const hostPort = req.body && req.body.hostPort ? Number(req.body.hostPort) : undefined;
 
     if (!name || !cmd) return res.status(400).json({ error: "missing name/cmd" });
@@ -1194,13 +1194,13 @@ app.post("/api/nodes/:id/server/action", async (req, res) => {
     let path = null;
     let payload = null;
 
-    if (cmd === "start") {
+    if (finalCmd === "start") {
       path = `/v1/servers/${encodeURIComponent(name)}/start`;
       // payload e opțional; agentul ia portul și din adpanel.json, dar îl trimitem dacă l-ai setat
       payload = startPayloadFor(name, hostPort);
-    } else if (cmd === "stop") {
+    } else if (finalCmd === "stop") {
       path = `/v1/servers/${encodeURIComponent(name)}/stop`;
-    } else if (cmd === "restart") {
+    } else if (finalCmd === "restart") {
       path = `/v1/servers/${encodeURIComponent(name)}/restart`;
     } else {
       return res.status(400).json({ error: "invalid cmd" });
