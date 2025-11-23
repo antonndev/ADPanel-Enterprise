@@ -766,27 +766,7 @@ app.post("/api/nodes/:id/server/action", async (req, res) => {
   if (cmd === "run" || cmd === "start") {
     // Best effort: seed runtime metadata on the node for non-Minecraft templates
     // so starts won't fail with "Unknown template" if the node lacks local config.
-    try {
-      const srv = findServerByNameOrId(name);
-      const tpl = String(srv?.template || "").toLowerCase();
-      const isMinecraft = tpl === "minecraft";
-      if (srv && tpl && !isMinecraft) {
-        const runtimePayload = {
-          runtime: srv.runtime || {},
-          template: tpl,
-          start: srv.start || srv.startFile || srv.entry || null,
-          port: srv.hostPort || srv.port || srv.server_port || req.body?.hostPort || null,
-          nodeId: node.uuid || node.id || null,
-        };
-        // Fire and forget; failure shouldn't block the start attempt.
-        callNodeApi(
-          node,
-          `/v1/servers/${encodeURIComponent(name)}/runtime`,
-          "POST",
-          runtimePayload
-        ).catch(() => {});
-      }
-    } catch {}
+    seedRuntimeOnNode(node, name, req.body?.hostPort).catch(() => {});
 
     path = `/v1/servers/${encodeURIComponent(name)}/start`;
     // agentul tău acceptă hostPort în body; păstrează dacă vine din UI
@@ -1493,6 +1473,29 @@ function startPayloadFor(name, hostPortFromReq) {
   return payload;
 }
 
+async function seedRuntimeOnNode(node, name, hostPortHint) {
+  try {
+    const srv = findServerByNameOrId(name);
+    const tpl = String(srv?.template || "").toLowerCase();
+    const isMinecraft = tpl === "minecraft";
+    if (srv && tpl && !isMinecraft) {
+      const runtimePayload = {
+        runtime: srv.runtime || {},
+        template: tpl,
+        start: srv.start || srv.startFile || srv.entry || null,
+        port: srv.hostPort || srv.port || srv.server_port || hostPortHint || null,
+        nodeId: node?.uuid || node?.id || null,
+      };
+      await callNodeApi(
+        node,
+        `/v1/servers/${encodeURIComponent(name)}/runtime`,
+        "POST",
+        runtimePayload
+      ).catch(() => {});
+    }
+  } catch (_) {}
+}
+
 // 9) ACTION (run/stop/restart/status) – mapat pe /v1/servers/:name/*
 app.post("/api/nodes/server/:name/action", async (req, res) => {
   try {
@@ -1506,6 +1509,7 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
 
     let path = null, method = "POST", payload = null;
     if (cmd === "start") {
+      if (ctx.node) seedRuntimeOnNode(ctx.node, req.params.name, hostPort).catch(() => {});
       path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
       payload = startPayloadFor(req.params.name, hostPort);
     } else if (cmd === "stop") {
@@ -1585,6 +1589,7 @@ app.get("/v1/servers/:name/files/list", async (req, res) => {
     let payload = null;
 
     if (finalCmd === "start") {
+      seedRuntimeOnNode(node, name, hostPort).catch(() => {});
       path = `/v1/servers/${encodeURIComponent(name)}/start`;
       // payload e opțional; agentul ia portul și din adpanel.json, dar îl trimitem dacă l-ai setat
       payload = startPayloadFor(name, hostPort);
@@ -1653,8 +1658,9 @@ app.delete("/v1/servers/:name/files/delete", async (req, res) => {
     let payload = null;
 
     if (cmd === "start") {
-      path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
       const hostPort = req.body && Number(req.body.hostPort);
+      seedRuntimeOnNode(node, req.params.name, hostPort).catch(() => {});
+      path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
       payload = startPayloadFor(req.params.name, hostPort);
     } else if (cmd === "stop") {
       path = `/v1/servers/${encodeURIComponent(req.params.name)}/stop`;
@@ -1676,6 +1682,43 @@ app.delete("/v1/servers/:name/files/delete", async (req, res) => {
 
 // 11) CREATE FILE / FOLDER (bridge către nod)
 app.post("/api/nodes/server/:name/create", async (req, res) => {
+  try {
+    const ctx = remoteContext(req.params.name);
+    if (!ctx.exists) return res.status(404).json({ error: "server not found" });
+    if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
+
+    const typeRaw = String((req.body && req.body.type) || "").toLowerCase();
+    const nameRaw = String((req.body && req.body.name) || "");
+    const relPath = String((req.body && req.body.path) || "");
+
+    if (typeRaw !== "file" && typeRaw !== "folder") return res.status(400).json({ error: "invalid_type" });
+    const safeName = sanitizeName(nameRaw);
+    if (!safeName) return res.status(400).json({ error: "invalid_name" });
+
+    try {
+      const relativePosix = path.posix.join(relPath || "", safeName);
+      const target = safeJoinUnix(ctx.baseDir, relativePosix);
+
+      const payload = typeRaw === "folder"
+        ? { path: safeJoinUnix(target, ".keep"), content: "", encoding: "utf8" }
+        : { path: target, content: "", encoding: "utf8" };
+
+      const { status, json } = await httpJson(
+        nodeUrl(ctx.node, "/v1/fs/write"),
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, nodeHeaders(ctx.node)), body: payload }
+      );
+      if (status !== 200 || !json || !json.ok) return res.status(502).json({ error: "node_create_failed" });
+      return res.json({ ok: true, path: relativePosix });
+    } catch (e) {
+      return res.status(400).json({ error: e && e.message ? e.message : "bad_path" });
+    }
+  } catch (e) {
+    return res.status(500).json({ error: "bridge_failed", detail: e && e.message });
+  }
+});
+
+// -------- Bridge: command prin numele serverului --------
+app.post("/api/nodes/server/:name/command", async (req, res) => {
   try {
     const ctx = remoteContext(req.params.name);
     if (!ctx.exists) return res.status(404).json({ error: "server not found" });
