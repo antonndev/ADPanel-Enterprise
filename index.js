@@ -3846,10 +3846,24 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
           const resolvedTemplate = resolveTemplateForBot(bot);
           const effectiveTemplateId = templateId || entry?.template || resolvedTemplate?.template || null;
           const normalizedTemplateId = normalizeTemplateId(effectiveTemplateId);
-          const canonicalTemplateId =
-            (effectiveTemplateId && findTemplateById(effectiveTemplateId) && normalizeTemplateId(effectiveTemplateId)) ||
-            (normalizedTemplateId && findTemplateById(normalizedTemplateId) && normalizedTemplateId) ||
-            normalizedTemplateId || null;
+          const resolvedTemplateDef = normalizedTemplateId ? findTemplateById(normalizedTemplateId) : null;
+          const canonicalTemplateId = resolvedTemplateDef ? normalizedTemplateId : (normalizedTemplateId || null);
+
+          function buildTemplateFromRuntime(baseId, runtime) {
+            if (!runtime || !runtime.image) return null;
+            return {
+              id: baseId || normalizedTemplateId || "custom",
+              docker: {
+                image: runtime.image,
+                tag: runtime.tag || "latest",
+                command: runtime.command || undefined,
+                env: runtime.env || {},
+                volumes: runtime.volumes || ["{BOT_DIR}:/app"],
+                ports: [],
+                restart: runtime.restart || "unless-stopped"
+              }
+            };
+          }
 
           if (isRemoteEntry(entry)) {
             const node = findNodeByIdOrName(entry.nodeId);
@@ -3863,7 +3877,7 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
               : clampAppPort(chosenPort, defaultPort);
             const r = await httpRequestJson(
               `${baseUrl}/v1/servers/${encodeURIComponent(bot)}/start`,
-              "POST", headers, { hostPort, templateId: canonicalTemplateId || undefined }, 20000
+              "POST", headers, { hostPort, templateId: canonicalTemplateId || undefined, runtime: entry?.runtime }, 20000
             );
             if (r.status !== 200 || !(r.json && r.json.ok)) {
               const msg = (r.json && (r.json.error || r.json.detail)) || `node status ${r.status}`;
@@ -3877,10 +3891,10 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
           await ensureNoContainer(bot);
 
           let runArgs;
-          if (canonicalTemplateId) {
-            const tpl = findTemplateById(canonicalTemplateId);
-            if (!tpl) throw new Error("Unknown template");
-
+          const runtimeTemplate = buildTemplateFromRuntime(canonicalTemplateId, entry?.runtime);
+          if (canonicalTemplateId && (resolvedTemplateDef || runtimeTemplate)) {
+            const tpl = resolvedTemplateDef || runtimeTemplate;
+            
             const tplCopy = JSON.parse(JSON.stringify(tpl));
             if (normalizedTemplateId === "minecraft") {
               const srv = findServer(bot);
