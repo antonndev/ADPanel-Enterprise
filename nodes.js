@@ -753,21 +753,53 @@ app.get("/v1/info", (req, res) => {
   });
 });
 
-// Delete server
-app.delete("/v1/servers/:name", async (req, res) => {
-  const name = String(req.params.name || "").trim();
-  if (!name) return res.status(400).json({ error: "missing name" });
-  try {
+// Action bridge: rulează acțiuni pe serverul de pe nod (run/stop/status/rm)
+app.post("/api/nodes/:id/server/action", async (req, res) => {
+  const node = findNodeByIdOrName(req.params.id);
+  if (!node) return res.status(404).json({ error: "node_not_found" });
+
+  const name = String(req.body?.name || req.body?.server || req.body?.bot || "").trim();
+  const cmd  = String(req.body?.cmd  || req.body?.action || "").toLowerCase();
+  if (!name || !cmd) return res.status(400).json({ error: "missing_params" });
+
+  let path = "", method = "POST", body = {};
+  if (cmd === "run" || cmd === "start") {
+    // Best effort: seed runtime metadata on the node for non-Minecraft templates
+    // so starts won't fail with "Unknown template" if the node lacks local config.
     try {
-      await dockerCollect(["rm", "-f", name]);
+      const srv = findServerByNameOrId(name);
+      const tpl = String(srv?.template || "").toLowerCase();
+      const isMinecraft = tpl === "minecraft";
+      if (srv && tpl && !isMinecraft) {
+        const runtimePayload = {
+          runtime: srv.runtime || {},
+          template: tpl,
+          start: srv.start || srv.startFile || srv.entry || null,
+          port: srv.hostPort || srv.port || srv.server_port || req.body?.hostPort || null,
+          nodeId: node.uuid || node.id || null,
+        };
+        // Fire and forget; failure shouldn't block the start attempt.
+        callNodeApi(
+          node,
+          `/v1/servers/${encodeURIComponent(name)}/runtime`,
+          "POST",
+          runtimePayload
+        ).catch(() => {});
+      }
     } catch {}
-    try {
-      fs.rmSync(path.join(VOLUMES_DIR, name), { recursive: true, force: true });
-    } catch {}
-    return res.json({ ok: true });
-  } catch (e) {
-    console.error("[node] delete failed:", e && e.message);
-    return res.status(500).json({ error: "delete failed" });
+
+    path = `/v1/servers/${encodeURIComponent(name)}/start`;
+    // agentul tău acceptă hostPort în body; păstrează dacă vine din UI
+    if (req.body?.hostPort) body.hostPort = Number(req.body.hostPort);
+  } else if (cmd === "stop") {
+    path = `/v1/servers/${encodeURIComponent(name)}/stop`;
+  } else if (cmd === "restart") {
+    path = `/v1/servers/${encodeURIComponent(name)}/restart`;
+  } else if (cmd === "status") {
+    method = "GET";
+    path = `/v1/servers/${encodeURIComponent(name)}`;
+  } else {
+    return res.status(400).json({ error: "unknown_cmd" });
   }
 });
 
@@ -1447,92 +1479,44 @@ app.post("/v1/fs/uploadRaw", async (req, res) => {
   }
 });
 
-// Bridge: /v1/server/action — { name, baseDir?, cmd, templateId?, docker? }
-async function startMinecraftContainerWithOverrides(name, serverDir, hostPort, overrides = {}) {
-  await ensureNoContainer(name);
-  await pullImage("itzg/minecraft-server:latest");
+function startPayloadFor(name, hostPortFromReq) {
+  const srv = findServerByNameOrId(name);
+  const chosenPort = Number.isFinite(hostPortFromReq)
+    ? hostPortFromReq
+    : (Number.isFinite(srv?.port) ? srv.port : undefined);
 
-  const args = ["run", "-d", "--name", name];
-
-  const restart = overrides.restart || "unless-stopped";
-  args.push("--restart", restart);
-
-  const portList =
-    Array.isArray(overrides.ports) && overrides.ports.length
-      ? overrides.ports
-      : [`${Number(hostPort)}:25565`];
-  for (const p of portList) args.push("-p", String(p));
-
-  args.push("-v", `${serverDir}:/data`);
-
-  const env = Object.assign(
-    {
-      EULA: "TRUE",
-      TYPE: "CUSTOM",
-      CUSTOM_SERVER: "/data/server.jar",
-      ENABLE_RCON: "false",
-      CREATE_CONSOLE_IN_PIPE: "true",
-    },
-    overrides.env || {}
-  );
-  // NU setăm SERVER_PORT în env!
-  for (const [k, v] of Object.entries(env)) args.push("-e", `${k}=${String(v)}`);
-
-  args.push("itzg/minecraft-server:latest");
-
-  const p = docker(args);
-  return new Promise((resolve, reject) => {
-    let err = "";
-    p.stdout.on("data", (d) => log("[docker run]", d.toString().trim()));
-    p.stderr.on("data", (d) => {
-      err += d.toString();
-      log("[docker run err]", d.toString().trim());
-    });
-    p.on("error", reject);
-    p.on("close", (code) =>
-      code === 0 ? resolve(true) : reject(new Error(err || "failed to start container"))
-    );
-  });
+  const payload = {};
+  if (Number.isFinite(chosenPort)) payload.hostPort = chosenPort;
+  if (srv?.template) payload.templateId = srv.template;
+  if (srv?.runtime) payload.runtime = srv.runtime;
+  if (srv?.start) payload.start = srv.start;
+  return payload;
 }
 
-app.post("/v1/server/action", async (req, res) => {
+// 9) ACTION (run/stop/restart/status) – mapat pe /v1/servers/:name/*
+app.post("/api/nodes/server/:name/action", async (req, res) => {
   try {
-    const body = req.body || {};
-    const rawName = body.name || body.server || "";
-    const name = sanitizeName(rawName);
-    if (!name) return res.status(400).json({ ok: false, error: "missing name" });
+    const ctx = remoteContext(req.params.name);
+    if (!ctx.exists) return res.status(404).json({ error: "server not found" });
+    if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
-    const cmd = String(body.cmd || body.action || "").toLowerCase();
-    if (!cmd) return res.status(400).json({ ok: false, error: "missing cmd" });
+    const cmdRaw = String((req.body && (req.body.cmd || req.body.action)) || "").toLowerCase();
+    const cmd = (cmdRaw === "run") ? "start" : cmdRaw; // alias
+    const hostPort = Number(req.body && req.body.hostPort);
 
-    const baseDirFromBody = body.baseDir ? safeUnderVolumes(body.baseDir) : null;
-    const serverDir = baseDirFromBody || path.join(VOLUMES_DIR, name);
-    const hostPort = Number(body.hostPort || 25565);
-
-    if (cmd === "run" || cmd === "start") {
-      if ((body.templateId || "").toLowerCase() === "minecraft") {
-        enforceServerProps(serverDir);
-        await startMinecraftContainerWithOverrides(name, serverDir, hostPort, body.docker || {});
-        return res.json({ ok: true, msg: "started" });
-      }
-      if (await containerExists(name)) {
-        await dockerCollect(["start", name]);
-        return res.json({ ok: true, msg: "started" });
-      }
-      return res.status(400).json({ ok: false, error: "unknown template and container missing" });
-    }
-
-    if (cmd === "stop") {
-      if (!(await containerExists(name))) return res.json({ ok: true, note: "not running" });
-      try {
-        await sendMinecraftConsoleCommand(name, "stop");
-      } catch {}
-      setTimeout(async () => {
-        try {
-          await dockerCollect(["stop", name]);
-        } catch {}
-      }, 20000);
-      return res.json({ ok: true, msg: "stopping" });
+    let path = null, method = "POST", payload = null;
+    if (cmd === "start") {
+      path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
+      payload = startPayloadFor(req.params.name, hostPort);
+    } else if (cmd === "stop") {
+      path = `/v1/servers/${encodeURIComponent(req.params.name)}/stop`;
+    } else if (cmd === "restart") {
+      path = `/v1/servers/${encodeURIComponent(req.params.name)}/restart`;
+    } else if (cmd === "status") {
+      method = "GET";
+      path = `/v1/servers/${encodeURIComponent(req.params.name)}`;
+    } else {
+      return res.status(400).json({ error: "invalid_cmd" });
     }
 
     if (cmd === "remove" || cmd === "rm") {
@@ -1587,22 +1571,36 @@ app.post("/v1/server/command", async (req, res) => {
 // ---- Files API (relative to server root)
 app.get("/v1/servers/:name/files/list", async (req, res) => {
   try {
-    const name = sanitizeName(req.params.name);
-    const rel = String(req.query.path || "");
-    const root = path.join(VOLUMES_DIR, name);
-    if (!fs.existsSync(root)) return res.status(404).json({ error: "server not found" });
-    const dir = safeJoin(root, rel);
-    if (!dir) return res.status(400).json({ error: "invalid path" });
-    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory())
-      return res.status(400).json({ error: "not a directory" });
+    const node = findNodeByIdOrName(req.params.id);
+    if (!node) return res.status(404).json({ error: "not found" });
 
-    const entries = fs.readdirSync(dir, { withFileTypes: true }).map((d) => ({
-      name: d.name,
-      isDir: d.isDirectory(),
-      size: d.isDirectory() ? 0 : fs.statSync(path.join(dir, d.name)).size || 0,
-      mtime: fs.statSync(path.join(dir, d.name)).mtimeMs || 0,
-    }));
-    res.json({ ok: true, path: rel, entries });
+    const name = String((req.body && req.body.name) || "").trim();
+    const cmd = String((req.body && req.body.cmd) || "").trim().toLowerCase();
+    const finalCmd = cmd === "run" ? "start" : cmd;
+    const hostPort = req.body && req.body.hostPort ? Number(req.body.hostPort) : undefined;
+
+    if (!name || !cmd) return res.status(400).json({ error: "missing name/cmd" });
+
+    let path = null;
+    let payload = null;
+
+    if (finalCmd === "start") {
+      path = `/v1/servers/${encodeURIComponent(name)}/start`;
+      // payload e opțional; agentul ia portul și din adpanel.json, dar îl trimitem dacă l-ai setat
+      payload = startPayloadFor(name, hostPort);
+    } else if (finalCmd === "stop") {
+      path = `/v1/servers/${encodeURIComponent(name)}/stop`;
+    } else if (finalCmd === "restart") {
+      path = `/v1/servers/${encodeURIComponent(name)}/restart`;
+    } else {
+      return res.status(400).json({ error: "invalid cmd" });
+    }
+
+    const { status, json } = await callNodeApi(node, path, "POST", payload);
+    if (status === 200 && json && (json.ok === true || json.ok === undefined)) {
+      return res.json(json || { ok: true });
+    }
+    return res.status(502).json({ error: "node_action_failed", detail: `HTTP ${status}`, response: json });
   } catch (e) {
     res.status(500).json({ error: e.message || "failed" });
   }
@@ -1645,24 +1643,76 @@ app.put("/v1/servers/:name/files/write", async (req, res) => {
 
 app.delete("/v1/servers/:name/files/delete", async (req, res) => {
   try {
-    const name = sanitizeName(req.params.name);
-    const rel = String((req.body && req.body.path) || "");
-    const isDir = !!(req.body && req.body.isDir);
-    const root = path.join(VOLUMES_DIR, name);
-    if (!fs.existsSync(root)) return res.status(404).json({ error: "server not found" });
-    const target = safeJoin(root, rel);
-    if (!target) return res.status(400).json({ error: "invalid path" });
-    if (!fs.existsSync(target)) return res.json({ ok: true, note: "already missing" });
+    const { node } = resolveNodeForServer(req.params.name);
+    if (!node) return res.status(404).json({ error: "server_or_node_not_found" });
 
-    if (isDir) fs.rmSync(target, { recursive: true, force: true });
-    else fs.rmSync(target, { force: true });
-    res.json({ ok: true });
+    const cmd = String((req.body && req.body.cmd) || "").trim().toLowerCase();
+    if (!cmd) return res.status(400).json({ error: "missing cmd" });
+
+    let path = null;
+    let payload = null;
+
+    if (cmd === "start") {
+      path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
+      const hostPort = req.body && Number(req.body.hostPort);
+      payload = startPayloadFor(req.params.name, hostPort);
+    } else if (cmd === "stop") {
+      path = `/v1/servers/${encodeURIComponent(req.params.name)}/stop`;
+    } else if (cmd === "restart") {
+      path = `/v1/servers/${encodeURIComponent(req.params.name)}/restart`;
+    } else {
+      return res.status(400).json({ error: "invalid cmd" });
+    }
+
+    const { status, json } = await callNodeApi(node, path, "POST", payload);
+    if (status === 200 && json && (json.ok === true || json.ok === undefined)) {
+      return res.json(json || { ok: true });
+    }
+    return res.status(502).json({ error: "node_action_failed", detail: `HTTP ${status}`, response: json });
   } catch (e) {
     res.status(500).json({ error: e.message || "failed" });
   }
 });
 
-app.post("/v1/servers/:name/files/mkdir", async (req, res) => {
+// 11) CREATE FILE / FOLDER (bridge către nod)
+app.post("/api/nodes/server/:name/create", async (req, res) => {
+  try {
+    const ctx = remoteContext(req.params.name);
+    if (!ctx.exists) return res.status(404).json({ error: "server not found" });
+    if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
+
+    const typeRaw = String((req.body && req.body.type) || "").toLowerCase();
+    const nameRaw = String((req.body && req.body.name) || "");
+    const relPath = String((req.body && req.body.path) || "");
+
+    if (typeRaw !== "file" && typeRaw !== "folder") return res.status(400).json({ error: "invalid_type" });
+    const safeName = sanitizeName(nameRaw);
+    if (!safeName) return res.status(400).json({ error: "invalid_name" });
+
+    try {
+      const relativePosix = path.posix.join(relPath || "", safeName);
+      const target = safeJoinUnix(ctx.baseDir, relativePosix);
+
+      const payload = typeRaw === "folder"
+        ? { path: safeJoinUnix(target, ".keep"), content: "", encoding: "utf8" }
+        : { path: target, content: "", encoding: "utf8" };
+
+      const { status, json } = await httpJson(
+        nodeUrl(ctx.node, "/v1/fs/write"),
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, nodeHeaders(ctx.node)), body: payload }
+      );
+      if (status !== 200 || !json || !json.ok) return res.status(502).json({ error: "node_create_failed" });
+      return res.json({ ok: true, path: relativePosix });
+    } catch (e) {
+      return res.status(400).json({ error: e && e.message ? e.message : "bad_path" });
+    }
+  } catch (e) {
+    return res.status(500).json({ error: "bridge_failed", detail: e && e.message });
+  }
+});
+
+// -------- Bridge: command prin numele serverului --------
+app.post("/api/nodes/server/:name/command", async (req, res) => {
   try {
     const name = sanitizeName(req.params.name);
     const rel = String((req.body && req.body.path) || "");
