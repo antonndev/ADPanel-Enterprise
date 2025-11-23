@@ -1108,6 +1108,20 @@ app.post("/api/nodes/server/:name/upload", upload.single("file"), async (req, re
   }
 });
 
+function startPayloadFor(name, hostPortFromReq) {
+  const srv = findServerByNameOrId(name);
+  const chosenPort = Number.isFinite(hostPortFromReq)
+    ? hostPortFromReq
+    : (Number.isFinite(srv?.port) ? srv.port : undefined);
+
+  const payload = {};
+  if (Number.isFinite(chosenPort)) payload.hostPort = chosenPort;
+  if (srv?.template) payload.templateId = srv.template;
+  if (srv?.runtime) payload.runtime = srv.runtime;
+  if (srv?.start) payload.start = srv.start;
+  return payload;
+}
+
 // 9) ACTION (run/stop/restart/status) – mapat pe /v1/servers/:name/*
 app.post("/api/nodes/server/:name/action", async (req, res) => {
   try {
@@ -1122,7 +1136,7 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
     let path = null, method = "POST", payload = null;
     if (cmd === "start") {
       path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
-      if (Number.isFinite(hostPort)) payload = { hostPort };
+      payload = startPayloadFor(req.params.name, hostPort);
     } else if (cmd === "stop") {
       path = `/v1/servers/${encodeURIComponent(req.params.name)}/stop`;
     } else if (cmd === "restart") {
@@ -1183,7 +1197,7 @@ app.post("/api/nodes/:id/server/action", async (req, res) => {
     if (cmd === "start") {
       path = `/v1/servers/${encodeURIComponent(name)}/start`;
       // payload e opțional; agentul ia portul și din adpanel.json, dar îl trimitem dacă l-ai setat
-      if (Number.isFinite(hostPort)) payload = { hostPort };
+      payload = startPayloadFor(name, hostPort);
     } else if (cmd === "stop") {
       path = `/v1/servers/${encodeURIComponent(name)}/stop`;
     } else if (cmd === "restart") {
@@ -1259,7 +1273,7 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
     if (cmd === "start") {
       path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
       const hostPort = req.body && Number(req.body.hostPort);
-      if (Number.isFinite(hostPort)) payload = { hostPort };
+      payload = startPayloadFor(req.params.name, hostPort);
     } else if (cmd === "stop") {
       path = `/v1/servers/${encodeURIComponent(req.params.name)}/stop`;
     } else if (cmd === "restart") {
@@ -1273,6 +1287,43 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
       return res.json(json || { ok: true });
     }
     return res.status(502).json({ error: "node_action_failed", detail: `HTTP ${status}`, response: json });
+  } catch (e) {
+    return res.status(500).json({ error: "bridge_failed", detail: e && e.message });
+  }
+});
+
+// 11) CREATE FILE / FOLDER (bridge către nod)
+app.post("/api/nodes/server/:name/create", async (req, res) => {
+  try {
+    const ctx = remoteContext(req.params.name);
+    if (!ctx.exists) return res.status(404).json({ error: "server not found" });
+    if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
+
+    const typeRaw = String((req.body && req.body.type) || "").toLowerCase();
+    const nameRaw = String((req.body && req.body.name) || "");
+    const relPath = String((req.body && req.body.path) || "");
+
+    if (typeRaw !== "file" && typeRaw !== "folder") return res.status(400).json({ error: "invalid_type" });
+    const safeName = sanitizeName(nameRaw);
+    if (!safeName) return res.status(400).json({ error: "invalid_name" });
+
+    try {
+      const relativePosix = path.posix.join(relPath || "", safeName);
+      const target = safeJoinUnix(ctx.baseDir, relativePosix);
+
+      const payload = typeRaw === "folder"
+        ? { path: safeJoinUnix(target, ".keep"), content: "", encoding: "utf8" }
+        : { path: target, content: "", encoding: "utf8" };
+
+      const { status, json } = await httpJson(
+        nodeUrl(ctx.node, "/v1/fs/write"),
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, nodeHeaders(ctx.node)), body: payload }
+      );
+      if (status !== 200 || !json || !json.ok) return res.status(502).json({ error: "node_create_failed" });
+      return res.json({ ok: true, path: relativePosix });
+    } catch (e) {
+      return res.status(400).json({ error: e && e.message ? e.message : "bad_path" });
+    }
   } catch (e) {
     return res.status(500).json({ error: "bridge_failed", detail: e && e.message });
   }
