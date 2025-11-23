@@ -3843,8 +3843,13 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
       switch (cmd) {
         case "run": {
           const entry = findServer(bot);
-          const effectiveTemplateId = templateId || entry?.template || null;
+          const resolvedTemplate = resolveTemplateForBot(bot);
+          const effectiveTemplateId = templateId || entry?.template || resolvedTemplate?.template || null;
           const normalizedTemplateId = normalizeTemplateId(effectiveTemplateId);
+          const canonicalTemplateId =
+            (effectiveTemplateId && findTemplateById(effectiveTemplateId) && normalizeTemplateId(effectiveTemplateId)) ||
+            (normalizedTemplateId && findTemplateById(normalizedTemplateId) && normalizedTemplateId) ||
+            normalizedTemplateId || null;
 
           if (isRemoteEntry(entry)) {
             const node = findNodeByIdOrName(entry.nodeId);
@@ -3858,7 +3863,7 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
               : clampAppPort(chosenPort, defaultPort);
             const r = await httpRequestJson(
               `${baseUrl}/v1/servers/${encodeURIComponent(bot)}/start`,
-              "POST", headers, { hostPort, templateId: effectiveTemplateId || undefined }, 20000
+              "POST", headers, { hostPort, templateId: canonicalTemplateId || undefined }, 20000
             );
             if (r.status !== 200 || !(r.json && r.json.ok)) {
               const msg = (r.json && (r.json.error || r.json.detail)) || `node status ${r.status}`;
@@ -3872,8 +3877,8 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
           await ensureNoContainer(bot);
 
           let runArgs;
-          if (effectiveTemplateId) {
-            const tpl = findTemplateById(effectiveTemplateId);
+          if (canonicalTemplateId) {
+            const tpl = findTemplateById(canonicalTemplateId);
             if (!tpl) throw new Error("Unknown template");
 
             const tplCopy = JSON.parse(JSON.stringify(tpl));
