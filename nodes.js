@@ -598,6 +598,14 @@ app.post("/api/nodes/:id/server/action", async (req, res) => {
 
   let path = "", method = "POST", body = {};
   if (cmd === "run" || cmd === "start") {
+    // Best effort: seed runtime metadata on the node for non-Minecraft templates
+    // so starts won't fail with "Unknown template" if the node lacks local config.
+    try {
+      await seedRuntimeOnNode(node, name, req.body?.hostPort);
+    } catch (_) {
+      /* best-effort */
+    }
+
     path = `/v1/servers/${encodeURIComponent(name)}/start`;
     // agentul tău acceptă hostPort în body; păstrează dacă vine din UI
     if (req.body?.hostPort) body.hostPort = Number(req.body.hostPort);
@@ -1122,6 +1130,29 @@ function startPayloadFor(name, hostPortFromReq) {
   return payload;
 }
 
+async function seedRuntimeOnNode(node, name, hostPortHint) {
+  try {
+    const srv = findServerByNameOrId(name);
+    const tpl = String(srv?.template || "").toLowerCase();
+    const isMinecraft = tpl === "minecraft";
+    if (srv && tpl && !isMinecraft) {
+      const runtimePayload = {
+        runtime: srv.runtime || {},
+        template: tpl,
+        start: srv.start || srv.startFile || srv.entry || null,
+        port: srv.hostPort || srv.port || srv.server_port || hostPortHint || null,
+        nodeId: node?.uuid || node?.id || null,
+      };
+      await callNodeApi(
+        node,
+        `/v1/servers/${encodeURIComponent(name)}/runtime`,
+        "POST",
+        runtimePayload
+      ).catch(() => {});
+    }
+  } catch (_) {}
+}
+
 // 9) ACTION (run/stop/restart/status) – mapat pe /v1/servers/:name/*
 app.post("/api/nodes/server/:name/action", async (req, res) => {
   try {
@@ -1135,6 +1166,11 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
 
     let path = null, method = "POST", payload = null;
     if (cmd === "start") {
+      try {
+        if (ctx.node) await seedRuntimeOnNode(ctx.node, req.params.name, hostPort);
+      } catch (_) {
+        /* best-effort */
+      }
       path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
       payload = startPayloadFor(req.params.name, hostPort);
     } else if (cmd === "stop") {
@@ -1195,6 +1231,11 @@ app.post("/api/nodes/:id/server/action", async (req, res) => {
     let payload = null;
 
     if (finalCmd === "start") {
+      try {
+        await seedRuntimeOnNode(node, name, hostPort);
+      } catch (_) {
+        /* best-effort */
+      }
       path = `/v1/servers/${encodeURIComponent(name)}/start`;
       // payload e opțional; agentul ia portul și din adpanel.json, dar îl trimitem dacă l-ai setat
       payload = startPayloadFor(name, hostPort);
@@ -1271,8 +1312,13 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
     let payload = null;
 
     if (cmd === "start") {
-      path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
       const hostPort = req.body && Number(req.body.hostPort);
+      try {
+        await seedRuntimeOnNode(node, req.params.name, hostPort);
+      } catch (_) {
+        /* best-effort */
+      }
+      path = `/v1/servers/${encodeURIComponent(req.params.name)}/start`;
       payload = startPayloadFor(req.params.name, hostPort);
     } else if (cmd === "stop") {
       path = `/v1/servers/${encodeURIComponent(req.params.name)}/stop`;
