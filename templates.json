@@ -1,0 +1,55 @@
+[
+  {
+    "id": "minecraft",
+    "name": "Minecraft",
+    "description": "You can create minecraft servers on this platform",
+    "docker": {
+      "image": "itzg/minecraft-server",
+      "tag": "latest",
+      "ports": [],
+      "env": {
+        "EULA": "TRUE",
+        "MEMORY": "2G",
+        "ENABLE_RCON": "false",
+        "CREATE_CONSOLE_IN_PIPE": "true"
+      },
+      "volumes": [
+        "{BOT_DIR}:/data"
+      ],
+      "command": "",
+      "restart": "unless-stopped"
+    }
+  },
+  {
+    "id": "nodejs",
+    "name": "Node.js",
+    "description": "Run Node.JS applications",
+    "docker": {
+      "image": "node",
+      "tag": "20-alpine",
+      "ports": [],
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "volumes": [
+        "{BOT_DIR}:/app"
+      ],
+      "command": "sh -c \"cd /app && npm install && node /app/index.js\"",
+      "restart": "unless-stopped"
+    }
+  },
+  {
+    "id": "vanilla",
+    "name": "Vanilla",
+    "description": "Choose what platform you want",
+    "docker": {
+      "image": "alpine",
+      "tag": "latest",
+      "ports": [],
+      "env": {},
+      "volumes": [],
+      "command": "sleep 3600",
+      "restart": "no"
+    }
+  }
+]

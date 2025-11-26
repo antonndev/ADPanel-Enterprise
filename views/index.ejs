@@ -500,7 +500,7 @@
         <img src="/images/adpanel-dark.png" alt="ADPanel logo" class="brand-logo" />
         <div class="brand-copy">
           <h1 class="brand-title">ADPanel</h1>
-          <p class="brand-subtitle">Smart control for your Discord bots</p>
+          <p class="brand-subtitle">Smart control for your servers</p>
         </div>
       </div>
 
@@ -534,12 +534,12 @@
         <div class="hero-copy">
           <h2>Welcome back!</h2>
           <p>
-            Monitor, deploy, and orchestrate Discord bots with ease. Launch new experiences for your community in
+            Monitor, deploy, and orchestrate servers with ease. Launch new experiences for your community in
             seconds.
           </p>
 
           <div class="hero-actions">
-            <button class="pills" data-scroll-target="bots">View Bots</button>
+            <button class="pills" data-scroll-target="bots">View Servers</button>
             <button class="pill pill--outline" id="createBtnHero">
               <i class="fa-solid fa-plus" style="margin-right:6px;"></i>Create
             </button>
@@ -552,7 +552,7 @@
               <i class="fa-solid fa-server"></i>
             </div>
             <div class="stat-card__content">
-              <p class="stat-card__label">Active bots</p>
+              <p class="stat-card__label">Active servers</p>
               <p class="stat-card__value"><%= bots.length %></p>
             </div>
           </article>
@@ -590,9 +590,9 @@
             <i class="fa-solid fa-bars-progress"></i>
             <p style="font-family: 'gg sans', sans-serif; font-size: 15px; line-height: 1.4;">Manage servers</p>
           </button>
-          <button class="quick-action" onclick="window.open('https://discord.com/developers/applications', '_blank')">
-            <i class="fa-brands fa-discord"></i>
-            <p style="font-family: 'gg sans', sans-serif; font-size: 15px; line-height: 1.4;">Discord Portal</p>
+          <button class="quick-action" onclick="window.open('https://ad-panel.com', '_blank')">
+            <i class="fa-duotone fa-regular fa-panel-ews"></i>
+            <p style="font-family: 'gg sans', sans-serif; font-size: 15px; line-height: 1.4;">ADPanel Site</p>
           </button>
         </div>
       </section>
@@ -600,7 +600,7 @@
       <section class="bots" id="bots">
         <div class="section-heading">
           <div>
-            <h3>Your bots</h3>
+            <h3>Your servers</h3>
             <p>Browse and jump straight into any bot workspace.</p>
           </div>
           <div class="section-actions">
@@ -644,7 +644,7 @@
     <template id="empty-state">
       <div class="empty-state">
         <i class="fa-solid fa-sparkles empty-state__icon"></i>
-        <h4>No bots found</h4>
+        <h4>No servers found</h4>
         <p>Try adjusting your search or create a new server.</p>
       </div>
     </template>
@@ -1163,6 +1163,7 @@
               <p class="template-card__description">${t.description || ''}</p>
               <div class="template-card__meta">
                 <span class="inline-hint">ID: ${t.id}</span>
+                <span class="inline-hint">${(t.docker && t.docker.image) ? `${t.docker.image}:${t.docker.tag || 'latest'}` : 'Custom Docker'}</span>
               </div>
             `;
             card.addEventListener('click', () => {
