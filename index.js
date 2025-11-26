@@ -3842,35 +3842,61 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
     try {
       switch (cmd) {
         case "run": {
-       const entry = findServer(bot);
-       if (isRemoteEntry(entry)) {
-        const node = findNodeByIdOrName(entry.nodeId);
-        if (!node) { _emitLine(bot, "[ADPanel] node not found"); break; }
-        const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
-        const headers = nodeAuthHeadersFor(node, true);
-        const hostPort = entry && entry.port ? clampPort(entry.port) : clampPort(port || 25565);
-        const r = await httpRequestJson(
-          `${baseUrl}/v1/servers/${encodeURIComponent(bot)}/start`,
-          "POST", headers, { hostPort }, 20000
-    );
-        if (r.status !== 200 || !(r.json && r.json.ok)) {
-          const msg = (r.json && (r.json.error || r.json.detail)) || `node status ${r.status}`;
-          _emitLine(bot, "[ADPanel] remote start failed: " + msg);
-          break;
-    }
-        _emitLine(bot, "[ADPanel] Remote start OK");
-        try { tailLogsRemote(bot, baseUrl, headers); } catch {}
-        break;
-}
-        await ensureNoContainer(bot);
+          const entry = findServer(bot);
+          const resolvedTemplate = resolveTemplateForBot(bot);
+          const effectiveTemplateId = templateId || entry?.template || resolvedTemplate?.template || null;
+          const normalizedTemplateId = normalizeTemplateId(effectiveTemplateId);
+          const resolvedTemplateDef = normalizedTemplateId ? findTemplateById(normalizedTemplateId) : null;
+          const canonicalTemplateId = resolvedTemplateDef ? normalizedTemplateId : (normalizedTemplateId || null);
+
+          function buildTemplateFromRuntime(baseId, runtime) {
+            if (!runtime || !runtime.image) return null;
+            return {
+              id: baseId || normalizedTemplateId || "custom",
+              docker: {
+                image: runtime.image,
+                tag: runtime.tag || "latest",
+                command: runtime.command || undefined,
+                env: runtime.env || {},
+                volumes: runtime.volumes || ["{BOT_DIR}:/app"],
+                ports: [],
+                restart: runtime.restart || "unless-stopped"
+              }
+            };
+          }
+
+          if (isRemoteEntry(entry)) {
+            const node = findNodeByIdOrName(entry.nodeId);
+            if (!node) { _emitLine(bot, "[ADPanel] node not found"); break; }
+            const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
+            const headers = nodeAuthHeadersFor(node, true);
+            const defaultPort = normalizedTemplateId === "minecraft" ? 25565 : 3001;
+            const chosenPort = entry && entry.port ? entry.port : (port || defaultPort);
+            const hostPort = normalizedTemplateId === "minecraft"
+              ? clampPort(chosenPort)
+              : clampAppPort(chosenPort, defaultPort);
+            const r = await httpRequestJson(
+              `${baseUrl}/v1/servers/${encodeURIComponent(bot)}/start`,
+              "POST", headers, { hostPort, templateId: canonicalTemplateId || undefined, runtime: entry?.runtime }, 20000
+            );
+            if (r.status !== 200 || !(r.json && r.json.ok)) {
+              const msg = (r.json && (r.json.error || r.json.detail)) || `node status ${r.status}`;
+              _emitLine(bot, "[ADPanel] remote start failed: " + msg);
+              break;
+            }
+            _emitLine(bot, "[ADPanel] Remote start OK");
+            try { tailLogsRemote(bot, baseUrl, headers); } catch {}
+            break;
+          }
+          await ensureNoContainer(bot);
 
           let runArgs;
-          if (templateId) {
-            const tpl = findTemplateById(templateId);
-            if (!tpl) throw new Error("Unknown template");
-
+          const runtimeTemplate = buildTemplateFromRuntime(canonicalTemplateId, entry?.runtime);
+          if (canonicalTemplateId && (resolvedTemplateDef || runtimeTemplate)) {
+            const tpl = resolvedTemplateDef || runtimeTemplate;
+            
             const tplCopy = JSON.parse(JSON.stringify(tpl));
-            if (templateId === "minecraft") {
+            if (normalizedTemplateId === "minecraft") {
               const srv = findServer(bot);
               const hostPort = srv && srv.port ? clampPort(srv.port) : clampPort(port || 25565);
 
