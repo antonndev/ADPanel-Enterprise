@@ -1,1 +1,31 @@
-[]
+[
+  {
+    "name": "testvps",
+    "template": "minecraft",
+    "start": "server.jar",
+    "ip": "185.99.132.79",
+    "nodeId": "ec41c6f6-763c-4f6e-816e-0ac21c50f52d",
+    "port": 3000,
+    "docker": {
+      "cpus": 0,
+      "cpuPercent": 0,
+      "memoryMb": 0,
+      "swapMb": 0,
+      "storageMb": 0
+    }
+  },
+  {
+    "name": "testlocal",
+    "template": "minecraft",
+    "start": "server.jar",
+    "ip": "103.208.85.88",
+    "port": 3002,
+    "docker": {
+      "cpus": 2,
+      "cpuPercent": 100,
+      "memoryMb": 200,
+      "swapMb": 1,
+      "storageMb": 200
+    }
+  }
+]

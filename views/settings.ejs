@@ -8,31 +8,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/images/adpanel-dark.png">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-              <link
-              rel="stylesheet"
-              href="https://site-assets.fontawesome.com/releases/v7.0.0/css/all.css"
-            />
-
-            <link
-              rel="stylesheet"
-              href="https://site-assets.fontawesome.com/releases/v7.0.0/css/sharp-solid.css"
-            />
-
-            <link
-              rel="stylesheet"
-              href="https://site-assets.fontawesome.com/releases/v7.0.0/css/sharp-regular.css"
-            />
-
-            <link
-              rel="stylesheet"
-              href="https://site-assets.fontawesome.com/releases/v7.0.0/css/sharp-light.css"
-            />
-
-            <link
-              rel="stylesheet"
-              href="https://site-assets.fontawesome.com/releases/v7.0.0/css/duotone.css"
-            />
-            <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
     /* Minimal helpers to ensure the new big modal and nodes UI look nice even without extra CSS */
     .nodes-empty {
@@ -60,6 +35,7 @@
       width:10px; height:10px; border-radius:50%;
       display:inline-block; margin-right:8px;
       background:#a1a1a1;
+      transition: background .15s ease;
     }
     .status-dot.green { background:#16a34a; }
     .status-dot.red { background:#ef4444; }
@@ -67,7 +43,7 @@
     .muted { color:var(--muted); }
     .kpi { font-size:12px; color: var(--muted); }
     .modal.big {
-      width:1000vw; height:80vh; max-height:900px;
+      width:80vw; max-width:1200px; height:80vh; max-height:900px;
       display:flex; flex-direction:column;
     }
     .modal .tabs {
@@ -77,6 +53,13 @@
     .modal .tabs button.active { background: var(--accent, #4f46e5); color: #fff; }
     .modal .tab-page { display:none; overflow:auto; }
     .modal .tab-page.active { display:block; }
+    .template-picker { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin-top:12px; }
+    .template-pill { border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03); border-radius:12px; padding:12px; text-align:left; cursor:pointer; transition:all 0.15s ease; }
+    .template-pill:hover { border-color:rgba(79,70,229,0.5); box-shadow:0 10px 30px rgba(0,0,0,0.25); transform:translateY(-1px); }
+    .template-pill.active { border-color:var(--accent,#4f46e5); background:rgba(79,70,229,0.08); box-shadow:0 12px 32px rgba(79,70,229,0.18); }
+    .template-pill .title { font-weight:700; font-size:15px; }
+    .template-pill .desc { color:var(--muted); margin-top:6px; font-size:13px; line-height:1.4; }
+    .template-pill .tag { display:inline-block; margin-top:8px; font-size:12px; padding:4px 8px; border-radius:999px; background:rgba(255,255,255,0.05); color:var(--muted); }
     .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     .field-col { display:flex; flex-direction:column; gap:6px; }
     .field-col input, .field-col textarea, .field-col select {
@@ -97,121 +80,9 @@
       display:inline-flex; align-items:center; gap:6px;
       padding:2px 8px; border-radius:9999px; background:rgba(15,23,42,0.06); font-size:12px;
     }
-
-    /* New: Create template modal layout + modern blue/aqua info panel */
-    .template-create-layout {
-      margin-top: 12px;
-      width: 1000px;
-      display: grid;
-      gap: 14px;
-      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.2fr);
-      align-items: stretch;
-    }
-    .template-create-form {
-      display: grid;
-      gap: 10px;
-      padding: 14px;
-      height: 450px;
-      margin-top: 25px;
-      border-radius: 14px;
-      background: var(--card-contrast-bg);
-      border: 1px solid rgba(15,23,42,0.08);
-    }
-    .template-create-form input,
-    .template-create-form textarea {
-      background: rgba(0,0,0,0.18);
-      border-radius: 10px;
-      border: 1px solid rgba(15,23,42,0.16);
-      color: var(--text, #e5e7eb);
-    }
-    .template-create-aside {
-      position: relative;
-      padding: 18px;
-      height: 450px;
-      margin-top: 20px;
-      width: 490px;
-      border-radius: 18px;
-      background:
-        radial-gradient(circle at 0% 0%, rgba(56,189,248,0.26), transparent 60%),
-        radial-gradient(circle at 120% 120%, rgba(37,99,235,0.38), transparent 60%),
-        linear-gradient(135deg, #020617, #020617);
-      box-shadow: 0 20px 50px rgba(15,23,42,0.75);
-      color: #e5f5ff;
-      overflow: hidden;
-    }
-    .template-create-aside::before {
-      content: "";
-      position: absolute;
-      inset: -40%;
-      background:
-        radial-gradient(circle at 0% 0%, rgba(56,189,248,0.3), transparent 55%),
-        radial-gradient(circle at 100% 100%, rgba(37,99,235,0.35), transparent 55%);
-      opacity: 0.8;
-      pointer-events: none;
-      mix-blend-mode: screen;
-    }
-    .template-create-aside-inner {
-      position: relative;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .template-create-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 4px;
-    }
-    .template-create-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(15,23,42,0.9);
-      backdrop-filter: blur(8px);
-      box-shadow: 0 10px 30px rgba(15,23,42,0.8);
-      flex-shrink: 0;
-    }
-    .template-create-title {
-      font-weight: 700;
-      font-size: 15px;
-      color: #e5f5ff;
-    }
-    .template-create-subtitle {
-      font-size: 13px;
-      color: rgba(226,242,255,0.9);
-      margin-top: 2px;
-    }
-    .template-create-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 8px;
-    }
-    .template-create-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: rgba(15,23,42,0.88);
-      border: 1px solid rgba(56,189,248,0.5);
-      font-size: 12px;
-      color: #e5f5ff;
-      backdrop-filter: blur(6px);
-    }
-    .template-create-footnote {
-      margin-top: 10px;
-      font-size: 12px;
-      color: rgba(226,242,255,0.85);
-    }
-
     @media (max-width: 900px){
       .grid-2 { grid-template-columns:1fr; }
       .modal.big { width:92vw; height:90vh; }
-      .template-create-layout { grid-template-columns:minmax(0,1fr); }
     }
   </style>
 </head>
@@ -240,7 +111,8 @@
         <button data-panel="account"><i class="fa-solid fa-user"></i> Account</button>
         <button data-panel="security"><i class="fa-solid fa-shield-halved"></i> Security</button>
         <button data-panel="nodes"><i class="fa-solid fa-diagram-project"></i> Nodes</button>
-        <button data-panel="templates"><i class="fa-solid fa-file"></i> Templates</button>
+        <button data-panel="templates"><i class="fa-solid fa-boxes-stacked"></i> Templates</button>
+        <button data-panel="integrations"><i class="fa-solid fa-file-import"></i> Integrations</button>
         <button data-panel="servers"><i class="fa-solid fa-server"></i> Servers</button>
       </nav>
 
@@ -460,6 +332,11 @@
                 <div id="templatesList" class="templates-grid" style="margin-top:12px"></div>
               </div>
 
+              <div id="integrations" class="panel-section">
+                <div style="font-weight:700">Integrations</div>
+                <div style="color:var(--muted);margin-top:8px">Connect external services</div>
+              </div>
+
               <div id="servers" class="panel-section">
                 <div class="servers-header">
                   <div>
@@ -468,7 +345,7 @@
                   </div>
 
                   <div class="create-inline" style="gap:8px">
-                    <input id="createServerName" type="text" placeholder="Server name" aria-label="New server name" />
+                    <input id="createServerName" type="text" placeholder="New server name" aria-label="New server name" />
                     <button class="btn" id="createServerBtn"><i class="fa-solid fa-plus"></i> Create</button>
                   </div>
                 </div>
@@ -476,7 +353,7 @@
                 <div id="serversList" style="margin-top:12px;display:grid;gap:8px">
                 </div>
 
-                <div class="note">Create an empty server</div>
+                <div class="note">Creating a server folder only creates an empty directory — upload or configure bot files afterwards. Use the trash icon to permanently remove a folder.</div>
               </div>
 
             </div>
@@ -511,228 +388,31 @@
   </div>
 
   <!-- Create template modal -->
-<div id="createTemplateOverlay" class="modal-overlay" aria-hidden="true">
-  <div class="modal" id="createTemplateModal" style="position: absolute; width: 1100px; height: 550px;">
-
-    <!-- HEADER - independent -->
-    <div style="
-      display:flex;
-      align-items:center;
-      justify-content:flex-start;
-      gap:16px;
-      width:100%;
-      margin-bottom:20px; /* SEPARĂ header-ul de formular */
-    ">
-      <h3 style="
-        margin:0;
-        display:flex;
-        align-items:center;
-        gap:8px;
-      ">
-        <i class="fa-solid fa-file"></i>
-        Create template
-      </h3>
-
-      <div style="
-        height:25px;
-        padding:0 18px;
-        border-radius:25px;
-        background-color:rgba(0, 174, 255, 0.292);
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        font-size:12px;
-        color:var(--muted);
-        backdrop-filter:blur(2px);
-      ">
-        Speak to ADPanel, what templates would you like
+  <div id="createTemplateOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal" id="createTemplateModal">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-boxes-stacked"></i> Create template</h3>
+        <div style="font-size:12px;color:var(--muted)">Inspired by 2025 design systems — layered glass, bold gradients and calm typography.</div>
       </div>
-    </div>
 
-    <!-- LAYOUT GENERAL -->
-    <div class="template-create-layout">
-      
-      <!-- FORMULAR INDEPENDENT -->
-      <div class="template-create-form" style="position: relative; margin-top:0;">
-<label style="display:grid; gap:4px; font-weight:600">
-  Template name
-
-  <div style="position:relative; width:100%;">
-    <input
-      type="text"
-      id="ct_name"
-      placeholder=" e.g. Minecraft"
-      style="
-        width:100%;
-        height:35px;
-        padding-right:35px; /* loc pentru icon */
-        outline:none;
-        background-color:rgba(37,37,37,0.84);
-        color:white;
-        border:none;
-        border-radius:4px;
-      "
-    />
-
-    <i
-      class="fa-regular fa-cube"
-      style="
-        position:absolute;
-        right:10px;
-        top:50%;
-        transform:translateY(-50%);
-        color:#aaa;
-        pointer-events:none;
-      "
-    ></i>
-  </div>
-<label style="display:grid; gap:4px; font-weight:600">
-  Template ID
-  <div style="position:relative; width:100%;">
-    <input
-      type="text"
-      id="ct_id"
-      placeholder=" Lowercase, a-z 0-9 - _"
-      style="
-        width:100%;
-        height:35px;
-        padding-right:35px;
-        outline:none;
-        background-color:rgba(37,37,37,0.85);
-        color:white;
-        border:1px solid rgba(255,255,255,0.08);
-        border-radius:5px;
-        transition:0.2s;
-      "
-      onfocus="this.style.border='1px solid #53a7f7'; this.style.boxShadow='0 0 6px #53a7f777';"
-      onblur="this.style.border='1px solid rgba(255,255,255,0.08)'; this.style.boxShadow='none';"
-    />
-    <i
-      class="fa-solid fa-id-badge"
-      style="
-        position:absolute;
-        right:10px;
-        top:50%;
-        transform:translateY(-50%);
-        color:#aaa;
-        pointer-events:none;
-        transition:0.2s;
-      "
-    ></i>
-  </div>
-</label>
-
-<!-- Description -->
-<label style="display:grid; gap:4px; font-weight:600">
-  Description
-  <div style="position:relative; width:100%;">
-    <textarea
-      id="ct_description"
-      placeholder=" Explain what the template does"
-      style="
-        width:100%;
-        min-height:72px;
-        padding-right:35px;
-        outline:none;
-        background-color:rgba(37,37,37,0.85);
-        color:white;
-        border:1px solid rgba(255,255,255,0.08);
-        border-radius:5px;
-        resize:vertical;
-        transition:0.2s;
-      "
-      onfocus="this.style.border='1px solid #53a7f7'; this.style.boxShadow='0 0 6px #53a7f777';"
-      onblur="this.style.border='1px solid rgba(255,255,255,0.08)'; this.style.boxShadow='none';"
-    ></textarea>
-
-    <i
-      class="fa-regular fa-subtitles"
-      style="
-        position:absolute;
-        right:10px;
-        top:10px;
-        color:#aaa;
-        pointer-events:none;
-        transition:0.2s;
-      "
-    ></i>
-  </div>
-</label>
-
-<!-- Docker image -->
-<label style="display:grid; gap:4px; font-weight:600">
-  Docker image
-  <div style="position:relative; width:100%;">
-    <input
-      type="text"
-      id="ct_image"
-      placeholder=" itzg/minecraft-server"
-      style="
-        width:100%;
-        height:35px;
-        padding-right:35px;
-        outline:none;
-        background-color:rgba(37,37,37,0.85);
-        color:white;
-        border:1px solid rgba(255,255,255,0.08);
-        border-radius:5px;
-        transition:0.2s;
-      "
-      onfocus="this.style.border='1px solid #53a7f7'; this.style.boxShadow='0 0 6px #53a7f777';"
-      onblur="this.style.border='1px solid rgba(255,255,255,0.08)'; this.style.boxShadow='none';"
-    />
-    <i
-      class="fa-brands fa-docker"
-      style="
-        position:absolute;
-        right:10px;
-        top:50%;
-        transform:translateY(-50%);
-        color:#aaa;
-        pointer-events:none;
-        transition:0.2s;
-      "
-    ></i>
-  </div>
-</label>
-
-<!-- Tag -->
-<label style="display:grid; gap:4px; font-weight:600">
-  Tag
-  <div style="position:relative; width:100%;">
-    <input
-      type="text"
-      id="ct_tag"
-      placeholder=" latest"
-      value="latest"
-      style="
-        width:100%;
-        height:35px;
-        padding-right:35px;
-        outline:none;
-        background-color:rgba(37,37,37,0.85);
-        color:white;
-        border:1px solid rgba(255,255,255,0.08);
-        border-radius:5px;
-        transition:0.2s;
-      "
-      onfocus="this.style.border='1px solid #53a7f7'; this.style.boxShadow='0 0 6px #53a7f777';"
-      onblur="this.style.border='1px solid rgba(255,255,255,0.08)'; this.style.boxShadow='none';"
-    />
-    <i
-      class="fa-solid fa-tag"
-      style="
-        position:absolute;
-        right:10px;
-        top:50%;
-        transform:translateY(-50%);
-        color:#aaa;
-        pointer-events:none;
-        transition:0.2s;
-      "
-    ></i>
-  </div>
-</label>
+      <div style="margin-top:12px;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));align-items:start">
+        <div style="display:grid;gap:10px;padding:14px;border-radius:14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);backdrop-filter:blur(8px)">
+          <label style="display:grid;gap:4px;font-weight:600">Template name
+            <input type="text" id="ct_name" placeholder="e.g. Minecraft" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);background:rgba(0,0,0,0.25)">
+          </label>
+          <label style="display:grid;gap:4px;font-weight:600">Template ID
+            <input type="text" id="ct_id" placeholder="Lowercase, a-z 0-9 - _" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);background:rgba(0,0,0,0.25)">
+          </label>
+          <label style="display:grid;gap:4px;font-weight:600">Description
+            <textarea id="ct_description" placeholder="Explain what the template does" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);min-height:72px;background:rgba(0,0,0,0.25);"></textarea>
+          </label>
+          <label style="display:grid;gap:4px;font-weight:600">Docker image
+            <input type="text" id="ct_image" placeholder="itzg/minecraft-server" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);background:rgba(0,0,0,0.25)">
+            <small class="muted" style="font-size:12px">We’ll pull this image automatically when the template is used.</small>
+          </label>
+          <label style="display:grid;gap:4px;font-weight:600">Tag
+            <input type="text" id="ct_tag" placeholder="latest" style="padding:10px;border-radius:10px;border:1px solid rgba(15,23,42,0.08);background:rgba(0,0,0,0.25)" value="latest">
+          </label>
 
           <div class="actions" style="margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn ghost" id="createTemplateCancel">Cancel</button>
@@ -741,41 +421,45 @@
           <div id="createTemplateFeedback" class="muted" style="margin-top:2px"></div>
         </div>
 
-        <!-- RIGHT: modern blue/aqua info -->
-        <aside class="template-create-aside">
-          <div class="template-create-aside-inner">
-            <div class="template-create-header">
-              <div class="template-create-icon">
-                <i class="fa-solid fa-wand-magic-sparkles"></i>
-              </div>
-              <div>
-                <div class="template-create-title">ADPanel with style</div>
-                <div class="template-create-subtitle">
-                  Create reusable Docker templates you can run on any of your nodes.
-                </div>
-              </div>
+        <div style="padding:16px;border-radius:16px;background:linear-gradient(135deg, rgba(99,102,241,0.35), rgba(236,72,153,0.25));border:1px solid rgba(255,255,255,0.08);box-shadow:0 15px 40px rgba(0,0,0,0.25);color:#e9e9f5;min-height:100%">
+          <div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;margin-bottom:8px">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:12px;background:rgba(255,255,255,0.12);backdrop-filter:blur(6px)"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+            <div>
+              <div>Modern build — ready for 2025</div>
+              <small style="color:rgba(233,233,245,0.8);font-weight:400">Consistent geometry, soft gradients, glass panels.</small>
             </div>
-
-            <div class="template-create-chips">
-              <span class="template-create-chip">
-                <i class="fa-solid fa-cube"></i>
-                Docker-native
-              </span>
-              <span class="template-create-chip">
-                <i class="fa-solid fa-shuffle"></i>
-                Reusable config
-              </span>
-              <span class="template-create-chip">
-                <i class="fa-solid fa-server"></i>
-                Runs on your nodes
-              </span>
-            </div>
-
-            <p class="template-create-footnote">
-              Use templates to standardize how services are deployed across your infrastructure.
-            </p>
           </div>
-        </aside>
+          <ul style="padding-left:18px;display:grid;gap:6px;margin:0">
+            <li>Use clear IDs so templates stay portable across nodes.</li>
+            <li>Pair images and tags to keep deployments reproducible.</li>
+            <li>Add concise descriptions; they show up in the create flow.</li>
+            <li>Docker volumes default to <code>{BOT_DIR}:/data</code> for safety.</li>
+          </ul>
+          <div style="margin-top:12px;padding:10px;border-radius:12px;background:rgba(255,255,255,0.08);color:#f6f7fb;font-size:13px">
+            Tip: keep tags pinned (e.g. <code>1.21.1</code>) for stability, or use <code>latest</code> for bleeding-edge.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change server template modal -->
+  <div id="changeTemplateOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal" id="changeTemplateModal">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div>
+          <h3 style="margin:0;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-wand-magic-sparkles"></i> Change template</h3>
+          <div class="muted" id="changeTemplateSubtitle" style="margin-top:4px"></div>
+        </div>
+        <div class="inline-badge" id="changeTemplateCurrent">Current: —</div>
+      </div>
+
+      <div id="changeTemplateList" class="template-picker" style="margin-top:16px"></div>
+      <div id="changeTemplateFeedback" class="muted" style="margin-top:8px"></div>
+
+      <div class="actions" style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost" id="changeTemplateCancel">Cancel</button>
+        <button class="btn" id="changeTemplateSave"><i class="fa-solid fa-check"></i> Save</button>
       </div>
     </div>
   </div>
@@ -1010,6 +694,18 @@
     const ct_description = document.getElementById('ct_description');
     const ct_image = document.getElementById('ct_image');
     const ct_tag = document.getElementById('ct_tag');
+    const changeTemplateOverlay = document.getElementById('changeTemplateOverlay');
+    const changeTemplateModal = document.getElementById('changeTemplateModal');
+    const changeTemplateList = document.getElementById('changeTemplateList');
+    const changeTemplateSubtitle = document.getElementById('changeTemplateSubtitle');
+    const changeTemplateCurrent = document.getElementById('changeTemplateCurrent');
+    const changeTemplateFeedback = document.getElementById('changeTemplateFeedback');
+    const changeTemplateCancel = document.getElementById('changeTemplateCancel');
+    const changeTemplateSave = document.getElementById('changeTemplateSave');
+    let templatesCache = [];
+    let templatesLoaded = false;
+    let templateModalServer = null;
+    let selectedTemplateId = null;
 
     const serversListEl = document.getElementById('serversList');
     const createServerBtn = document.getElementById('createServerBtn');
@@ -1384,18 +1080,25 @@ function renderServers(list){
     const name = item.name || String(item);
     const isLocal = (item && typeof item.isLocal === 'boolean') ? item.isLocal : (!item.nodeId);
     const chipText = isLocal ? 'ID: localhost' : `ID: ${item.nodeId}`;
+    const templateId = (item && item.template) ? String(item.template) : null;
+    const templateLabel = templateId ? templateId : 'template: unknown';
 
     const row = document.createElement('div');
     row.className = 'server-row clickable-card';
     row.dataset.name = name;
+    if (templateId) row.dataset.template = templateId;
     row.innerHTML = `
       <div class="left">
         <div class="iconWrap"><i class="fa-solid fa-folder"></i></div>
         <div class="name">${escapeHtml(name)}</div>
         <span class="inline-badge" style="margin-left:8px">${escapeHtml(chipText)}</span>
+        <span class="inline-badge" style="margin-left:8px;background:rgba(79,70,229,0.12);color:var(--text)">${escapeHtml(templateLabel)}</span>
       </div>
       <div class="actions">
-        <button class="btn ghost delete-server" style="transition: transform(none);" data-name="${encodeURIComponent(name)}" title="Delete ${escapeHtml(name)}">
+        <button class="btn ghost change-template" data-name="${encodeURIComponent(name)}" data-template="${templateId ? encodeURIComponent(templateId) : ''}" title="Change template">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </button>
+        <button class="btn ghost delete-server" data-name="${encodeURIComponent(name)}" title="Delete ${escapeHtml(name)}">
           <i class="fa-solid fa-trash"></i>
         </button>
       </div>
@@ -1423,7 +1126,9 @@ function renderServers(list){
           return;
         }
         const data = await res.json();
-        renderTemplates(Array.isArray(data.templates) ? data.templates : []);
+        templatesCache = Array.isArray(data.templates) ? data.templates : [];
+        templatesLoaded = true;
+        renderTemplates(templatesCache);
       } catch (e) {
         console.error(e);
         templatesListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">Network error</div>`;
@@ -1442,7 +1147,7 @@ function renderServers(list){
         row.className = 'template-card clickable-card';
         row.innerHTML = `
           <div class="template-card__body">
-            <div class="template-card__icon"><i class="fa-solid fa-file"></i></div>
+            <div class="template-card__icon"><i class="fa-solid fa-boxes-stacked"></i></div>
             <div class="template-card__content">
               <div class="template-card__title">
                 <div class="name">${escapeHtml(tpl.name || tpl.id)}</div>
@@ -1452,6 +1157,7 @@ function renderServers(list){
               <div class="template-card__meta">
                 <span><i class="fa-solid fa-cube"></i> ${escapeHtml((tpl.docker && tpl.docker.image) ? tpl.docker.image : 'Custom image')}</span>
                 <span><i class="fa-solid fa-tag"></i> ${escapeHtml((tpl.docker && tpl.docker.tag) ? tpl.docker.tag : 'latest')}</span>
+                <span><i class="fa-solid fa-folder-tree"></i> ${escapeHtml((tpl.docker && tpl.docker.volumes && tpl.docker.volumes.length) ? tpl.docker.volumes.join(', ') : '{BOT_DIR}:/data')}</span>
               </div>
             </div>
             <div class="template-card__actions">
@@ -1463,6 +1169,81 @@ function renderServers(list){
         `;
         templatesListEl.appendChild(row);
       });
+    }
+
+    async function ensureTemplatesLoadedForModal(){
+      if(templatesLoaded && Array.isArray(templatesCache) && templatesCache.length) return templatesCache;
+      try {
+        const res = await fetch('/api/settings/templates');
+        if(res.ok){
+          const data = await res.json().catch(()=>({ templates: [] }));
+          templatesCache = Array.isArray(data.templates) ? data.templates : [];
+          templatesLoaded = true;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      return templatesCache || [];
+    }
+
+    function closeChangeTemplateModal(){
+      changeTemplateOverlay.classList.remove('show');
+      changeTemplateModal.classList.remove('show');
+      changeTemplateFeedback.textContent = '';
+      templateModalServer = null;
+      selectedTemplateId = null;
+    }
+
+    function templateDisplayName(tpl){
+      return tpl || 'template: unknown';
+    }
+
+    async function renderChangeTemplateOptions(){
+      changeTemplateList.innerHTML = `<div style="padding:12px;color:var(--muted)">Loading templates…</div>`;
+      const list = await ensureTemplatesLoadedForModal();
+      if(!Array.isArray(list) || list.length === 0){
+        changeTemplateList.innerHTML = `<div style="padding:12px;color:var(--muted)">No templates available. Create one first.</div>`;
+        return;
+      }
+      changeTemplateList.innerHTML = '';
+      list.forEach(tpl => {
+        const card = document.createElement('div');
+        const id = tpl && tpl.id ? String(tpl.id) : '';
+        card.className = 'template-pill clickable-card';
+        if(selectedTemplateId && id.toLowerCase() === String(selectedTemplateId).toLowerCase()) card.classList.add('active');
+        card.innerHTML = `
+          <div class="title">${escapeHtml(tpl.name || id || 'Untitled')}</div>
+          <div class="desc">${escapeHtml(tpl.description || 'No description provided.')}</div>
+          <div class="tag">ID: ${escapeHtml(id || 'n/a')}</div>
+        `;
+        card.addEventListener('click', ()=>{
+          selectedTemplateId = id;
+          renderChangeTemplateOptions();
+          changeTemplateFeedback.textContent = '';
+        });
+        changeTemplateList.appendChild(card);
+      });
+    }
+
+    function openChangeTemplateModal(name, currentTemplate){
+      templateModalServer = name;
+      selectedTemplateId = currentTemplate || '';
+      changeTemplateSubtitle.textContent = `Switch ${name} to another template from your library.`;
+      changeTemplateCurrent.textContent = `Current: ${templateDisplayName(currentTemplate)}`;
+      changeTemplateFeedback.textContent = '';
+      renderChangeTemplateOptions();
+      changeTemplateOverlay.classList.add('show');
+      changeTemplateModal.classList.add('show');
+    }
+
+    function updateServerTemplateInRow(name, templateId){
+      const row = Array.from(serversListEl.querySelectorAll('.server-row')).find(r => r.dataset.name === name);
+      if(!row) return;
+      row.dataset.template = templateId || '';
+      const badges = row.querySelectorAll('.inline-badge');
+      if(badges && badges[1]) badges[1].textContent = templateDisplayName(templateId);
+      const changeBtn = row.querySelector('.change-template');
+      if(changeBtn) changeBtn.dataset.template = templateId ? encodeURIComponent(templateId) : '';
     }
 
     function openTemplateModal(){
@@ -1605,11 +1386,26 @@ function renderServers(list){
     });
 
     serversListEl.addEventListener('click', async (e)=>{
+      const changeBtn = e.target.closest('.change-template');
+      if (changeBtn) {
+        const encName = changeBtn.dataset.name;
+        if (!encName) return;
+        const name = decodeURIComponent(encName);
+        const row = changeBtn.closest('.server-row');
+        const currentTemplate = (row && row.dataset.template) || (changeBtn.dataset.template ? decodeURIComponent(changeBtn.dataset.template) : '');
+        openChangeTemplateModal(name, currentTemplate || '');
+        return;
+      }
+
       const btn = e.target.closest('.delete-server');
       if(!btn) return;
       const encName = btn.dataset.name;
       if(!encName) return;
       const name = decodeURIComponent(encName);
+      // The backend will detect if it's remote by checking servers.json (nodeId) and will:
+      // - stop & remove docker container on the node,
+      // - delete /var/lib/node/volumes/volumes/<server> on node,
+      // - remove the entry from servers.json
       const ok = confirm(`Delete server "${name}"? This will permanently remove the folder and its contents.${'\n'}If it is on a node, the node container and files will be removed too.`);
       if(!ok) return;
       try {
@@ -1621,8 +1417,10 @@ function renderServers(list){
           btn.disabled = false;
           return;
         }
+        // Remove row from UI
         const row = btn.closest('.server-row');
         if(row) row.remove();
+        // If list is empty, refresh for the empty state
         if (!serversListEl.children.length) {
           loadServers();
         }
@@ -1630,6 +1428,39 @@ function renderServers(list){
         console.error(err);
         alert('Network error while deleting server');
         btn.disabled = false;
+      }
+    });
+
+    changeTemplateCancel.addEventListener('click', closeChangeTemplateModal);
+    changeTemplateOverlay.addEventListener('click', (e)=>{ if(e.target === changeTemplateOverlay) closeChangeTemplateModal(); });
+
+    changeTemplateSave.addEventListener('click', async ()=>{
+      if(!templateModalServer) return;
+      if(!selectedTemplateId){
+        changeTemplateFeedback.textContent = 'Select a template first.';
+        return;
+      }
+      try {
+        changeTemplateSave.disabled = true;
+        changeTemplateSave.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving';
+        const res = await fetch(`/api/settings/servers/${encodeURIComponent(templateModalServer)}/template`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ templateId: selectedTemplateId })
+        });
+        const data = await res.json().catch(()=>({ error: 'Invalid response' }));
+        if(!res.ok){
+          changeTemplateFeedback.textContent = data.error || 'Failed to update template';
+          return;
+        }
+        updateServerTemplateInRow(templateModalServer, data.template || selectedTemplateId);
+        closeChangeTemplateModal();
+      } catch (e) {
+        console.error(e);
+        changeTemplateFeedback.textContent = 'Network error while saving template';
+      } finally {
+        changeTemplateSave.disabled = false;
+        changeTemplateSave.innerHTML = '<i class="fa-solid fa-check"></i> Save';
       }
     });
 
@@ -2030,15 +1861,18 @@ function renderServers(list){
       const httpUrl  = `http://${address}:${p}/health`;
       const httpsUrl = `https://${address}:${p}/health`;
 
+      // Try same scheme first to avoid mixed-content blocks
       const candidates = [];
       if (location.protocol === 'https:') { candidates.push(httpsUrl, httpUrl); }
       else { candidates.push(httpUrl, httpsUrl); }
 
       for (const u of candidates) {
         try {
+          // no-cors will resolve to "opaque" if reachable; that's good enough for green
           await fetchWithTimeout(u, { method: 'GET', mode: 'no-cors', cache: 'no-store' }, 2500);
           return true;
         } catch (_e) {
+          // try next candidate
         }
       }
       return false;
@@ -2046,10 +1880,11 @@ function renderServers(list){
 
     async function backendProbe(nodeIdOrUuid) {
       try {
+        // FIX: nodes.js has POST /api/nodes/:id/check
         const r = await fetch(`/api/nodes/${encodeURIComponent(nodeIdOrUuid)}/check`, { method: 'POST', cache: 'no-store' });
         if (!r.ok) return false;
         const j = await r.json().catch(()=> ({}));
-        return !!j.ok;
+        return !!j.ok; // nodes.js responds { ok:true, ... } when reachable
       } catch (e) {
         return false;
       }
@@ -2064,11 +1899,13 @@ function renderServers(list){
     }
 
     async function probeAndPaint(row, node) {
+      // 1) probe din browser
       const okBrowser = await browserProbe(node.address, node.api_port);
       if (okBrowser) {
         setNodeStatus(row, 'green', 'Online (browser)');
         return;
       }
+      // 2) fallback: verificare din backend (vei avea endpointul în nodes.js)
       const okBackend = await backendProbe(node.id || node.uuid || node.name);
       if (okBackend) setNodeStatus(row, 'green', 'Online (panel backend)');
       else setNodeStatus(row, 'red', 'Offline / unreachable');
@@ -2158,7 +1995,7 @@ function renderServers(list){
     document.querySelector('button[data-panel="nodes"]').addEventListener('click', () => {
       clearInterval(_nodesTimer);
       loadNodes();
-      _nodesTimer = setInterval(loadNodes, 5000);
+      _nodesTimer = setInterval(loadNodes, 5000); // refresh la 5s
     });
 
     function renderNodes(nodes){
@@ -2178,8 +2015,9 @@ function renderServers(list){
         row.className = 'node-row';
         row.dataset.id = n.id || n.uuid || '';
 
+        // STATUS (initial — bazat pe heartbeat-ul din backend)
         const lastSeen = Number(n.last_seen || n.lastSeen || n.lastHeartbeat || 0);
-        const fresh = lastSeen > 0 && (now - lastSeen) < 120000;
+        const fresh = lastSeen > 0 && (now - lastSeen) < 120000; // 120s TTL
         let statusClass = 'gray';
         let statusLabel = 'No recent heartbeat';
         if (n.online === false) {
@@ -2194,6 +2032,7 @@ function renderServers(list){
             statusClass = 'green';
             statusLabel = 'Online';
           } else {
+            // unknown => lăsăm gray până la probe din browser
             statusClass = 'gray';
             statusLabel = 'Checking…';
           }
@@ -2218,10 +2057,12 @@ function renderServers(list){
         row.addEventListener('click', ()=> openNodeModal(n.id || n.uuid));
         nodesListEl.appendChild(row);
 
+        // PROBE live din browser + fallback backend -> actualizează punctul la verde/roșu
         probeAndPaint(row, n);
       });
     }
 
+    // Create node submit
     createNodeSave.addEventListener('click', async ()=>{
       try {
         createNodeFeedback.textContent = '';
@@ -2255,7 +2096,7 @@ function renderServers(list){
         showCreateNodeModal(false);
         await loadNodes();
         if(data.id || data.uuid){
-          openNodeModal(data.id || data.uuid, true);
+          openNodeModal(data.id || data.uuid, /*focusLinking*/ true);
         }
       } catch (err){
         console.error(err);
@@ -2266,6 +2107,7 @@ function renderServers(list){
       }
     });
 
+    // Node modal open/fill
     function showNodeModal(show){
       if (show) { nodeModalOverlay.classList.add('show'); nodeModal.classList.add('show'); }
       else { nodeModalOverlay.classList.remove('show'); nodeModal.classList.remove('show'); }
@@ -2328,11 +2170,13 @@ function renderServers(list){
       }
       bindEditPortsRadios();
 
+      // Linking content
       nm_configYml.value = generateNodeConfigYml(node);
       nm_cmd.value = '';
       nm_cmd.style.display = 'none';
       nm_cmdActions.style.display = 'none';
 
+      // Default tab
       nm_tabs.forEach(b=>b.classList.remove('active'));
       [tab_build, tab_linking, tab_deletion].forEach(p=>p.classList.remove('active'));
       if(focusLinking){

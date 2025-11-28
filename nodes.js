@@ -611,8 +611,7 @@ app.post("/api/nodes/:id/server/action", async (req, res) => {
     }
 
     path = `/v1/servers/${encodeURIComponent(name)}/start`;
-    // agentul tău acceptă hostPort în body; păstrează dacă vine din UI
-    if (req.body?.hostPort) body.hostPort = Number(req.body.hostPort);
+    body = startPayloadFor(name, req.body?.hostPort);
   } else if (cmd === "stop") {
     path = `/v1/servers/${encodeURIComponent(name)}/stop`;
   } else if (cmd === "restart") {
@@ -753,33 +752,27 @@ app.patch("/api/nodes/:id", (req, res) => {
 });
 
 // -------- DELETE --------
-app.post("/api/nodes/:id/server/action", async (req, res) => {
+app.delete("/api/nodes/:id", (req, res) => {
+  const list = loadNodes();
   const node = findNodeByIdOrName(req.params.id);
-  if (!node) return res.status(404).json({ error: "node_not_found" });
+  if (!node) return res.status(404).json({ error: "not found" });
 
-  const name = String(req.body?.name || req.body?.server || req.body?.bot || "").trim();
-  const cmd  = String(req.body?.cmd  || req.body?.action || "").toLowerCase();
-  if (!name || !cmd) return res.status(400).json({ error: "missing_params" });
+  // dacă există servers.json și are servere atașate la acest nod, blochează
+  try {
+    const servers = readJson(SERVERS_FILE, []);
+    const attached = (Array.isArray(servers) ? servers : []).filter(s => {
+      const v = (s && (s.node || s.nodeId || s.node_id)) || "";
+      return String(v).toLowerCase() === String(node.uuid).toLowerCase() ||
+             String(v).toLowerCase() === String(node.name).toLowerCase();
+    });
+    if (attached.length > 0) {
+      return res.status(400).json({ error: "cannot delete node with servers attached", servers: attached.map(s => s.name).filter(Boolean) });
+    }
+  } catch {}
 
-  let path = "", method = "POST", body = {};
-  if (cmd === "run" || cmd === "start") {
-    // Best effort: seed runtime metadata on the node for non-Minecraft templates
-    // so starts won't fail with "Unknown template" if the node lacks local config.
-    seedRuntimeOnNode(node, name, req.body?.hostPort).catch(() => {});
-
-    path = `/v1/servers/${encodeURIComponent(name)}/start`;
-    // agentul tău acceptă hostPort în body; păstrează dacă vine din UI
-    if (req.body?.hostPort) body.hostPort = Number(req.body.hostPort);
-  } else if (cmd === "stop") {
-    path = `/v1/servers/${encodeURIComponent(name)}/stop`;
-  } else if (cmd === "restart") {
-    path = `/v1/servers/${encodeURIComponent(name)}/restart`;
-  } else if (cmd === "status") {
-    method = "GET";
-    path = `/v1/servers/${encodeURIComponent(name)}`;
-  } else {
-    return res.status(400).json({ error: "unknown_cmd" });
-  }
+  const after = list.filter(n => String(n.id) !== String(node.id));
+  saveNodes(after);
+  res.json({ ok: true });
 });
 
 // -------- BUILD CONFIG --------
@@ -880,7 +873,17 @@ setInterval(async () => {
 /* ====================== */
 
 // Baza de date pe nod pentru volume servere
-const NODE_VOLUME_ROOT = "/var/lib/node/volumes/volumes";
+// Remote nodes store per-server data under /var/lib/node/volumes by default.
+// The previous value duplicated the trailing "volumes" segment, causing
+// file operations to target a sibling directory and silently miss the actual
+// server data directory. Correct the default so remote file edits write to the
+// same location the node agent uses.
+const NODE_VOLUME_ROOT = "/var/lib/node/volumes";
+const nodeVolumeRootCache = new Map();
+
+function saveServers(list) {
+  writeJson(SERVERS_FILE, Array.isArray(list) ? list : []);
+}
 
 // servers.json helpers
 function loadServers() {
@@ -926,6 +929,41 @@ function safeJoinUnix(base, rel) {
   if (!joined.startsWith(b + "/") && joined !== b) throw new Error("path traversal");
   return joined;
 }
+
+async function resolveNodeVolumeRoot(node) {
+  try {
+    const cacheKey = node?.uuid || node?.id || node?.name;
+    if (cacheKey && nodeVolumeRootCache.has(cacheKey)) {
+      return nodeVolumeRootCache.get(cacheKey);
+    }
+
+    let detected = null;
+
+    const { status, json } = await callNodeApi(node, "/v1/info", "GET", null, DEFAULT_NODE_TIMEOUT_MS);
+    if (status === 200 && json) {
+      detected = (json.node && json.node.volumesDir) || json.volumes_dir || null;
+    }
+
+    // Fallback to unauthenticated /health if auth or parsing failed.
+    if (!detected && status !== 200) {
+      try {
+        const { status: hs, json: hjson } = await httpJson(nodeUrl(node, "/health"), { method: "GET" });
+        if (hs === 200 && hjson) {
+          detected = (hjson.node && hjson.node.volumesDir) || hjson.volumes_dir || null;
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    detected = detected || NODE_VOLUME_ROOT;
+
+    if (cacheKey) nodeVolumeRootCache.set(cacheKey, detected || NODE_VOLUME_ROOT);
+    return detected || NODE_VOLUME_ROOT;
+  } catch (_) {
+    return NODE_VOLUME_ROOT;
+  }
+}
 function mapFsEntries(entries) {
   // normalize răspuns agent -> UI
   const out = [];
@@ -935,29 +973,85 @@ function mapFsEntries(entries) {
   });
   return out;
 }
-function remoteContext(serverName) {
-  const srv = findServerByNameOrId(serverName);
-  if (!srv) return { exists: false };
-  const ref = serverNodeRef(srv);
-  if (!ref) return { exists: true, remote: false, info: buildServerInfo(srv) };
+async function discoverServerOnAnyNode(serverName) {
+  const nodes = loadNodes();
+  const trimmed = String(serverName || "").trim();
+  for (const n of nodes) {
+    const { status, json } = await callNodeApi(
+      n,
+      `/v1/servers/${encodeURIComponent(trimmed)}`,
+      "GET",
+      null,
+      DEFAULT_NODE_TIMEOUT_MS
+    );
+    if (status === 200 && json && json.ok) {
+      const meta = json.meta || {};
+      const entry = {
+        name: trimmed,
+        node: n.uuid || n.id || n.name,
+        start: meta.start || null,
+        template: meta.type || null,
+        runtime: meta.runtime || null,
+        dir: meta.dir || meta.path || trimmed,
+        hostPort: meta.hostPort || meta.port || null,
+      };
 
-  const node = findNodeByIdOrName(ref);
+      // persist mapping for subsequent calls
+      const current = loadServers();
+      const idx = current.findIndex((s) => String(s.name || "").toLowerCase() === trimmed.toLowerCase());
+      if (idx >= 0) current[idx] = Object.assign({}, current[idx], entry);
+      else current.push(entry);
+      saveServers(current);
+
+      return { srv: entry, node: n };
+    }
+  }
+  return { srv: null, node: null };
+}
+
+async function remoteContext(serverName) {
+  let srv = findServerByNameOrId(serverName);
+  let node = srv ? findNodeByIdOrName(serverNodeRef(srv)) : null;
+
+  if (!srv || !node) {
+    const discovered = await discoverServerOnAnyNode(serverName);
+    if (discovered && discovered.srv && discovered.node) {
+      srv = srv || discovered.srv;
+      node = node || discovered.node;
+    }
+  }
+
+  if (!srv) return { exists: false };
   if (!node) return { exists: true, remote: false, info: buildServerInfo(srv) };
 
-  const baseDir = `${NODE_VOLUME_ROOT}/${sanitizeName(srv.name || serverName)}`;
+  // Prefer the exact folder reference if it exists on the server record; fall back to
+  // the sanitized server name so we don't look under the wrong directory on the node.
+  const dirCandidates = [srv.botDir, srv.dir, srv.path, srv.name, serverName].filter(Boolean);
+  const dirName = sanitizeName(dirCandidates.find((n) => sanitizeName(n)) || serverName);
+  const baseDir = `${NODE_VOLUME_ROOT}/${dirName}`;
   return {
     exists: true,
     remote: true,
     node,
     nodeId: node.uuid,
+    dirName,
     baseDir,
     info: buildServerInfo(srv)
   };
 }
 
+async function remoteFsContext(serverName) {
+  const ctx = await remoteContext(serverName);
+  if (!ctx.remote || !ctx.node) return ctx;
+
+  const root = await resolveNodeVolumeRoot(ctx.node);
+  const dirName = ctx.dirName || sanitizeName(serverName);
+  return Object.assign({}, ctx, { baseDir: `${root}/${dirName}` });
+}
+
 // 1) INFO — spune UI-ului dacă serverul e pe nod extern
 app.get("/api/nodes/server/:name/info", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.json({ ok: false, remote: false, info: null });
 
   // dacă e remote, verifică și starea nodului
@@ -976,7 +1070,7 @@ app.get("/api/nodes/server/:name/info", async (req, res) => {
 
 // 2) LISTARE fișiere (bridge către nod)
 app.get("/api/nodes/server/:name/entries", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -996,7 +1090,7 @@ app.get("/api/nodes/server/:name/entries", async (req, res) => {
 
 // 3) READ FILE
 app.get("/api/nodes/server/:name/file", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1016,7 +1110,7 @@ app.get("/api/nodes/server/:name/file", async (req, res) => {
 
 // 4) WRITE FILE
 app.post("/api/nodes/server/:name/file", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1037,7 +1131,7 @@ app.post("/api/nodes/server/:name/file", async (req, res) => {
 
 // 5) DELETE (file/folder)
 app.post("/api/nodes/server/:name/delete", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1058,7 +1152,7 @@ app.post("/api/nodes/server/:name/delete", async (req, res) => {
 
 // 6) RENAME
 app.post("/api/nodes/server/:name/rename", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1080,7 +1174,7 @@ app.post("/api/nodes/server/:name/rename", async (req, res) => {
 
 // 7) EXTRACT (arhive)
 app.post("/api/nodes/server/:name/extract", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1100,7 +1194,7 @@ app.post("/api/nodes/server/:name/extract", async (req, res) => {
 
 // 8) UPLOAD (multipart -> base64 forward)
 app.post("/api/nodes/server/:name/upload", upload.single("file"), async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1129,8 +1223,9 @@ app.post("/api/nodes/server/:name/upload", upload.single("file"), async (req, re
 
 function startPayloadFor(name, hostPortFromReq) {
   const srv = findServerByNameOrId(name);
-  const chosenPort = Number.isFinite(hostPortFromReq)
-    ? hostPortFromReq
+  const hostPortNum = Number(hostPortFromReq);
+  const chosenPort = Number.isFinite(hostPortNum)
+    ? hostPortNum
     : (Number.isFinite(srv?.port) ? srv.port : undefined);
 
   const payload = {};
@@ -1138,6 +1233,7 @@ function startPayloadFor(name, hostPortFromReq) {
   if (srv?.template) payload.templateId = srv.template;
   if (srv?.runtime) payload.runtime = srv.runtime;
   if (srv?.start) payload.start = srv.start;
+  if (srv?.docker) payload.docker = srv.docker;
   return payload;
 }
 
@@ -1147,12 +1243,67 @@ async function seedRuntimeOnNode(node, name, hostPortHint) {
     const tpl = String(srv?.template || "").toLowerCase();
     const isMinecraft = tpl === "minecraft";
     if (srv && tpl && !isMinecraft) {
+      let existingMeta = null;
+      try {
+        const { status, json } = await callNodeApi(
+          node,
+          `/v1/servers/${encodeURIComponent(name)}`,
+          "GET",
+          null,
+          DEFAULT_NODE_TIMEOUT_MS
+        );
+        if (status === 200 && json && json.meta) existingMeta = json.meta;
+      } catch (_) {}
+
+      const existingType = String(existingMeta?.type || "").toLowerCase();
+      const existingRuntime = existingMeta?.runtime || {};
+      const existingProvider = String(
+        existingRuntime.providerId || existingRuntime.provider || existingType
+      ).toLowerCase();
+      const desiredProvider = String(srv.runtime?.providerId || tpl).toLowerCase();
+      const existingStart = existingMeta?.start || existingMeta?.entry || null;
+      const desiredStart = srv.start || srv.startFile || srv.entry || null;
+
+      const desiredPort = srv.hostPort || srv.port || srv.server_port || hostPortHint || null;
+      const existingPort = existingMeta?.hostPort || existingMeta?.port || null;
+
+      const dockerMatches = (() => {
+        const keys = [
+          "command",
+          "restart",
+          "image",
+          "tag",
+          "cpus",
+          "cpuPercent",
+          "memoryMb",
+          "swapMb",
+          "storageMb",
+        ];
+        const src = srv.docker || {};
+        const dst = existingMeta?.docker || {};
+        return keys.every((k) => {
+          const a = src[k];
+          const b = dst[k];
+          return (a === undefined || a === null || a === "") ? (b === undefined || b === null || b === "") : a === b;
+        });
+      })();
+
+      const alreadySeeded =
+        existingType === tpl &&
+        existingProvider === desiredProvider &&
+        (!!desiredStart ? desiredStart === existingStart : true) &&
+        ((desiredPort || existingPort) ? Number(desiredPort || 0) === Number(existingPort || 0) : true) &&
+        dockerMatches;
+
+      if (alreadySeeded) return;
+
       const runtimePayload = {
         runtime: srv.runtime || {},
         template: tpl,
-        start: srv.start || srv.startFile || srv.entry || null,
-        port: srv.hostPort || srv.port || srv.server_port || hostPortHint || null,
+        start: desiredStart,
+        port: desiredPort,
         nodeId: node?.uuid || node?.id || null,
+        docker: srv.docker || null,
       };
       await callNodeApi(
         node,
@@ -1168,7 +1319,7 @@ async function seedRuntimeOnNode(node, name, hostPortHint) {
 // 9) ACTION (run/stop/restart/status) – mapat pe /v1/servers/:name/*
 app.post("/api/nodes/server/:name/action", async (req, res) => {
   try {
-    const ctx = remoteContext(req.params.name);
+    const ctx = await remoteContext(req.params.name);
     if (!ctx.exists) return res.status(404).json({ error: "server not found" });
     if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1209,7 +1360,7 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
 // 10) CONSOLE COMMAND – mapat pe /v1/servers/:name/command
 app.post("/api/nodes/server/:name/command", async (req, res) => {
   try {
-    const ctx = remoteContext(req.params.name);
+    const ctx = await remoteContext(req.params.name);
     if (!ctx.exists) return res.status(404).json({ error: "server not found" });
     if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1359,7 +1510,7 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
 // 11) CREATE FILE / FOLDER (bridge către nod)
 app.post("/api/nodes/server/:name/create", async (req, res) => {
   try {
-    const ctx = remoteContext(req.params.name);
+    const ctx = await remoteFsContext(req.params.name);
     if (!ctx.exists) return res.status(404).json({ error: "server not found" });
     if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
