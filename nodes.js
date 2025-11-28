@@ -874,7 +874,12 @@ setInterval(async () => {
 /* ====================== */
 
 // Baza de date pe nod pentru volume servere
-const NODE_VOLUME_ROOT = "/var/lib/node/volumes/volumes";
+// Remote nodes store per-server data under /var/lib/node/volumes by default.
+// The previous value duplicated the trailing "volumes" segment, causing
+// file operations to target a sibling directory and silently miss the actual
+// server data directory. Correct the default so remote file edits write to the
+// same location the node agent uses.
+const NODE_VOLUME_ROOT = "/var/lib/node/volumes";
 
 // servers.json helpers
 function loadServers() {
