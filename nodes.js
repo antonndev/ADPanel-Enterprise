@@ -1179,11 +1179,65 @@ async function seedRuntimeOnNode(node, name, hostPortHint) {
     const tpl = String(srv?.template || "").toLowerCase();
     const isMinecraft = tpl === "minecraft";
     if (srv && tpl && !isMinecraft) {
+      let existingMeta = null;
+      try {
+        const { status, json } = await callNodeApi(
+          node,
+          `/v1/servers/${encodeURIComponent(name)}`,
+          "GET",
+          null,
+          DEFAULT_NODE_TIMEOUT_MS
+        );
+        if (status === 200 && json && json.meta) existingMeta = json.meta;
+      } catch (_) {}
+
+      const existingType = String(existingMeta?.type || "").toLowerCase();
+      const existingRuntime = existingMeta?.runtime || {};
+      const existingProvider = String(
+        existingRuntime.providerId || existingRuntime.provider || existingType
+      ).toLowerCase();
+      const desiredProvider = String(srv.runtime?.providerId || tpl).toLowerCase();
+      const existingStart = existingMeta?.start || existingMeta?.entry || null;
+      const desiredStart = srv.start || srv.startFile || srv.entry || null;
+
+      const desiredPort = srv.hostPort || srv.port || srv.server_port || hostPortHint || null;
+      const existingPort = existingMeta?.hostPort || existingMeta?.port || null;
+
+      const dockerMatches = (() => {
+        const keys = [
+          "command",
+          "restart",
+          "image",
+          "tag",
+          "cpus",
+          "cpuPercent",
+          "memoryMb",
+          "swapMb",
+          "storageMb",
+        ];
+        const src = srv.docker || {};
+        const dst = existingMeta?.docker || {};
+        return keys.every((k) => {
+          const a = src[k];
+          const b = dst[k];
+          return (a === undefined || a === null || a === "") ? (b === undefined || b === null || b === "") : a === b;
+        });
+      })();
+
+      const alreadySeeded =
+        existingType === tpl &&
+        existingProvider === desiredProvider &&
+        (!!desiredStart ? desiredStart === existingStart : true) &&
+        ((desiredPort || existingPort) ? Number(desiredPort || 0) === Number(existingPort || 0) : true) &&
+        dockerMatches;
+
+      if (alreadySeeded) return;
+
       const runtimePayload = {
         runtime: srv.runtime || {},
         template: tpl,
-        start: srv.start || srv.startFile || srv.entry || null,
-        port: srv.hostPort || srv.port || srv.server_port || hostPortHint || null,
+        start: desiredStart,
+        port: desiredPort,
         nodeId: node?.uuid || node?.id || null,
         docker: srv.docker || null,
       };
