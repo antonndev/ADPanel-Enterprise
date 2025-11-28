@@ -808,13 +808,6 @@ function findTemplateById(id) {
   return loadTemplatesFile().find(t => String(t?.id || "").toLowerCase() === key) || null;
 }
 
-function startFileForTemplate(templateId) {
-  const key = String(templateId || "").toLowerCase();
-  if (key === "minecraft") return "server.jar";
-  if (key === "discord-bot" || key === "nodejs") return "index.js";
-  return null;
-}
-
 function findServersUsingTemplate(id) {
   const key = normalizeTemplateId(id);
   if (!key) return [];
@@ -1352,31 +1345,15 @@ app.post("/api/settings/background", (req, res) => {
 app.get("/api/settings/servers", (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
   try {
-    function templateFromAdpanel(name) {
-      try {
-        const p = path.join(BOTS_DIR, name, "adpanel.json");
-        if (!fs.existsSync(p)) return null;
-        const meta = JSON.parse(fs.readFileSync(p, "utf8"));
-        return meta?.template || meta?.type || null;
-      } catch {
-        return null;
-      }
-    }
-
     const local = fs.existsSync(BOTS_DIR)
-      ? fs
-          .readdirSync(BOTS_DIR, { withFileTypes: true })
-          .filter(e => e.isDirectory())
-          .map(d => ({ name: d.name, template: templateFromAdpanel(d.name) }))
+      ? fs.readdirSync(BOTS_DIR, { withFileTypes: true }).filter(e => e.isDirectory()).map(d => d.name)
       : [];
 
     const index = loadServersIndex(); // servers.json
     const byName = new Map();
 
     // Locale (fallback: local)
-    local.forEach(n =>
-      byName.set(n.name, { name: n.name, isLocal: true, nodeId: null, template: n.template || null })
-    );
+    local.forEach(n => byName.set(n, { name: n, isLocal: true, nodeId: null }));
 
     // Index (poate să override-uiască “isLocal”)
     (index || []).forEach(e => {
@@ -1384,11 +1361,7 @@ app.get("/api/settings/servers", (req, res) => {
       byName.set(e.name, {
         name: e.name,
         isLocal: !(e.nodeId && e.nodeId !== "local"),
-        nodeId: e.nodeId || null,
-        template: e.template || null,
-        start: e.start || null,
-        port: e.port || null,
-        ip: e.ip || null
+        nodeId: e.nodeId || null
       });
     });
 
@@ -1487,52 +1460,6 @@ app.delete("/api/settings/servers/:name", async (req, res) => {
     console.error("[/api/settings/servers/:name DELETE] failed:", e && e.message);
     return res.status(500).json({ error: "failed to delete server" });
   }
-});
-
-app.post("/api/settings/servers/:name/template", (req, res) => {
-  if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
-
-  let nameParam = req.params.name || "";
-  try {
-    nameParam = decodeURIComponent(nameParam);
-  } catch {}
-  const name = String(nameParam).trim();
-  if (!name || name.includes("..") || /[\/\\]/.test(name)) {
-    return res.status(400).json({ error: "invalid name" });
-  }
-
-  const { templateId } = req.body || {};
-  if (!templateId) return res.status(400).json({ error: "missing templateId" });
-  const tpl = findTemplateById(templateId);
-  if (!tpl) return res.status(400).json({ error: "unknown template" });
-
-  const list = loadServersIndex();
-  const idx = list.findIndex(e => e && e.name === name);
-  const current = idx >= 0 ? list[idx] : { name, isLocal: true, nodeId: null };
-
-  const updated = Object.assign({}, current, {
-    name,
-    template: tpl.id || templateId,
-    start: startFileForTemplate(templateId) || current.start || null,
-  });
-
-  if (idx >= 0) list[idx] = updated;
-  else list.push(updated);
-  saveServersIndex(list);
-
-  // Keep local adpanel.json in sync when it exists
-  try {
-    const metaPath = path.join(BOTS_DIR, name, "adpanel.json");
-    if (fs.existsSync(metaPath)) {
-      const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
-      const merged = Object.assign({}, meta, { template: updated.template, type: updated.template, start: updated.start });
-      fs.writeFileSync(metaPath, JSON.stringify(merged, null, 2), "utf8");
-    }
-  } catch (e) {
-    console.warn("[servers/template] failed to sync adpanel.json:", e && e.message);
-  }
-
-  return res.json({ ok: true, template: updated.template, start: updated.start || null });
 });
 
 // --- MY SERVERS ---
