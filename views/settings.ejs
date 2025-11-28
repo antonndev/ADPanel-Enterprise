@@ -343,11 +343,6 @@
                     <div style="font-weight:700">Servers</div>
                     <div style="color:var(--muted)">Manage yours</div>
                   </div>
-
-                  <div class="create-inline" style="gap:8px">
-                    <input id="createServerName" type="text" placeholder="New server name" aria-label="New server name" />
-                    <button class="btn" id="createServerBtn"><i class="fa-solid fa-plus"></i> Create</button>
-                  </div>
                 </div>
 
                 <div id="serversList" style="margin-top:12px;display:grid;gap:8px">
@@ -460,6 +455,62 @@
       <div class="actions" style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap">
         <button class="btn ghost" id="changeTemplateCancel">Cancel</button>
         <button class="btn" id="changeTemplateSave"><i class="fa-solid fa-check"></i> Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Startup & limits modal -->
+  <div id="startupOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal" id="startupModal">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div>
+          <h3 style="margin:0;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-microchip"></i> Startup & limits</h3>
+          <div class="muted" id="startupSubtitle" style="margin-top:4px">Configure docker run for this server.</div>
+        </div>
+        <div class="inline-badge">0 = unlimited</div>
+      </div>
+
+      <div style="margin-top:12px;display:grid;gap:12px">
+        <label class="field-col" style="gap:6px">
+          <span style="font-weight:700">Startup command</span>
+          <input type="text" id="startupCommand" placeholder="sh -lc &quot;npm install && node index.js&quot;" />
+          <small class="muted">Leave blank to use the template default.</small>
+        </label>
+
+        <div class="grid-2">
+          <label class="field-col" style="gap:6px">
+            <span style="font-weight:700">CPU cores</span>
+            <input type="number" id="startupCpuCores" min="0" step="0.1" placeholder="e.g. 2" />
+          </label>
+          <label class="field-col" style="gap:6px">
+            <span style="font-weight:700">CPU %</span>
+            <input type="number" id="startupCpuPercent" min="0" step="1" placeholder="e.g. 150" />
+          </label>
+        </div>
+
+        <div class="grid-2">
+          <label class="field-col" style="gap:6px">
+            <span style="font-weight:700">RAM (MB)</span>
+            <input type="number" id="startupRam" min="0" step="1" placeholder="e.g. 2048" />
+          </label>
+          <label class="field-col" style="gap:6px">
+            <span style="font-weight:700">Swap (MB)</span>
+            <input type="number" id="startupSwap" min="0" step="1" placeholder="e.g. 512" />
+          </label>
+        </div>
+
+        <label class="field-col" style="gap:6px">
+          <span style="font-weight:700">Storage (MB)</span>
+          <input type="number" id="startupStorage" min="0" step="1" placeholder="e.g. 10240" />
+          <small class="muted">Applies storage driver limits where supported.</small>
+        </label>
+
+        <div id="startupFeedback" class="muted" style="min-height:18px"></div>
+      </div>
+
+      <div class="actions" style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost" id="startupCancel">Cancel</button>
+        <button class="btn" id="startupSave"><i class="fa-solid fa-check"></i> Save</button>
       </div>
     </div>
   </div>
@@ -702,14 +753,24 @@
     const changeTemplateFeedback = document.getElementById('changeTemplateFeedback');
     const changeTemplateCancel = document.getElementById('changeTemplateCancel');
     const changeTemplateSave = document.getElementById('changeTemplateSave');
+    const startupOverlay = document.getElementById('startupOverlay');
+    const startupModal = document.getElementById('startupModal');
+    const startupSubtitle = document.getElementById('startupSubtitle');
+    const startupCommand = document.getElementById('startupCommand');
+    const startupCpuCores = document.getElementById('startupCpuCores');
+    const startupCpuPercent = document.getElementById('startupCpuPercent');
+    const startupRam = document.getElementById('startupRam');
+    const startupSwap = document.getElementById('startupSwap');
+    const startupStorage = document.getElementById('startupStorage');
+    const startupFeedback = document.getElementById('startupFeedback');
+    const startupCancel = document.getElementById('startupCancel');
+    const startupSave = document.getElementById('startupSave');
     let templatesCache = [];
     let templatesLoaded = false;
     let templateModalServer = null;
     let selectedTemplateId = null;
 
     const serversListEl = document.getElementById('serversList');
-    const createServerBtn = document.getElementById('createServerBtn');
-    const createServerNameInput = document.getElementById('createServerName');
 
     const accountsListEl = document.getElementById('accountsList');
 
@@ -1082,11 +1143,18 @@ function renderServers(list){
     const chipText = isLocal ? 'ID: localhost' : `ID: ${item.nodeId}`;
     const templateId = (item && item.template) ? String(item.template) : null;
     const templateLabel = templateId ? templateId : 'template: unknown';
+    const dockerCfg = item && item.docker ? item.docker : {};
 
     const row = document.createElement('div');
     row.className = 'server-row clickable-card';
     row.dataset.name = name;
     if (templateId) row.dataset.template = templateId;
+    row.dataset.command = dockerCfg.command || '';
+    row.dataset.cpus = Number.isFinite(dockerCfg.cpus) ? dockerCfg.cpus : '';
+    row.dataset.cpuPercent = Number.isFinite(dockerCfg.cpuPercent) ? dockerCfg.cpuPercent : '';
+    row.dataset.memoryMb = Number.isFinite(dockerCfg.memoryMb) ? dockerCfg.memoryMb : '';
+    row.dataset.swapMb = Number.isFinite(dockerCfg.swapMb) ? dockerCfg.swapMb : '';
+    row.dataset.storageMb = Number.isFinite(dockerCfg.storageMb) ? dockerCfg.storageMb : '';
     row.innerHTML = `
       <div class="left">
         <div class="iconWrap"><i class="fa-solid fa-folder"></i></div>
@@ -1097,6 +1165,9 @@ function renderServers(list){
       <div class="actions">
         <button class="btn ghost change-template" data-name="${encodeURIComponent(name)}" data-template="${templateId ? encodeURIComponent(templateId) : ''}" title="Change template">
           <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </button>
+        <button class="btn ghost edit-startup" data-name="${encodeURIComponent(name)}" title="Startup & limits">
+          <i class="fa-solid fa-microchip"></i>
         </button>
         <button class="btn ghost delete-server" data-name="${encodeURIComponent(name)}" title="Delete ${escapeHtml(name)}">
           <i class="fa-solid fa-trash"></i>
@@ -1246,6 +1317,84 @@ function renderServers(list){
       if(changeBtn) changeBtn.dataset.template = templateId ? encodeURIComponent(templateId) : '';
     }
 
+    let startupServer = null;
+    function closeStartupModal(){
+      if(startupOverlay){
+        startupOverlay.classList.remove('show');
+        startupOverlay.setAttribute('aria-hidden','true');
+      }
+      startupServer = null;
+      if(startupFeedback) startupFeedback.textContent = '';
+    }
+
+    function fillStartupFieldsFromRow(row){
+      if(!row) return;
+      startupCommand.value = row.dataset.command || '';
+      startupCpuCores.value = row.dataset.cpus || '';
+      startupCpuPercent.value = row.dataset.cpuPercent || '';
+      startupRam.value = row.dataset.memoryMb || '';
+      startupSwap.value = row.dataset.swapMb || '';
+      startupStorage.value = row.dataset.storageMb || '';
+    }
+
+    function openStartupModalForRow(row){
+      if(!row) return;
+      const name = row.dataset.name;
+      if(!name) return;
+      startupServer = name;
+      startupSubtitle.textContent = `Server: ${name}`;
+      fillStartupFieldsFromRow(row);
+      startupOverlay.classList.add('show');
+      startupOverlay.setAttribute('aria-hidden','false');
+    }
+
+    function updateStartupRowData(name, docker){
+      const row = Array.from(serversListEl.querySelectorAll('.server-row')).find(r => r.dataset.name === name);
+      if(!row) return;
+      const cfg = docker || {};
+      row.dataset.command = cfg.command || '';
+      row.dataset.cpus = Number.isFinite(cfg.cpus) ? cfg.cpus : '';
+      row.dataset.cpuPercent = Number.isFinite(cfg.cpuPercent) ? cfg.cpuPercent : '';
+      row.dataset.memoryMb = Number.isFinite(cfg.memoryMb) ? cfg.memoryMb : '';
+      row.dataset.swapMb = Number.isFinite(cfg.swapMb) ? cfg.swapMb : '';
+      row.dataset.storageMb = Number.isFinite(cfg.storageMb) ? cfg.storageMb : '';
+    }
+
+    async function saveStartupConfig(){
+      if(!startupServer) return;
+      if(startupSave) startupSave.disabled = true;
+      if(startupFeedback) startupFeedback.textContent = 'Saving…';
+      try {
+        const payload = {
+          command: (startupCommand.value || '').trim(),
+          cpus: Number(startupCpuCores.value || 0),
+          cpuPercent: Number(startupCpuPercent.value || 0),
+          memoryMb: Number(startupRam.value || 0),
+          swapMb: Number(startupSwap.value || 0),
+          storageMb: Number(startupStorage.value || 0),
+        };
+
+        const res = await fetch(`/api/settings/servers/${encodeURIComponent(startupServer)}/docker`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok){
+          startupFeedback.textContent = data.error || 'Failed to save settings';
+          return;
+        }
+        startupFeedback.textContent = 'Updated';
+        updateStartupRowData(startupServer, data.docker || payload);
+        setTimeout(closeStartupModal, 400);
+      } catch (err) {
+        console.error(err);
+        startupFeedback.textContent = 'Network error while saving';
+      } finally {
+        if(startupSave) startupSave.disabled = false;
+      }
+    }
+
     function openTemplateModal(){
       createTemplateOverlay.classList.add('show');
       createTemplateModal.classList.add('show');
@@ -1355,36 +1504,6 @@ function renderServers(list){
       });
     }
 
-    createServerBtn.addEventListener('click', async ()=>{
-      const raw = createServerNameInput.value.trim();
-      if(!raw) return alert('Enter a server name');
-      if(!/^[\w\-. ]{1,80}$/.test(raw)) return alert('Invalid name — allowed: letters, numbers, -, _, ., space');
-      try {
-        createServerBtn.disabled = true;
-        createServerBtn.innerHTML = 'Creating...';
-        const res = await fetch('/api/settings/servers', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ name: raw })
-        });
-        const data = await res.json().catch(()=>({ error: 'Invalid response' }));
-        if(!res.ok){
-          alert(data.error || 'Failed to create server');
-          createServerBtn.disabled = false;
-          createServerBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Create';
-          return;
-        }
-        createServerNameInput.value = '';
-        loadServers();
-      } catch (err) {
-        console.error(err);
-        alert('Network error while creating server');
-      } finally {
-        createServerBtn.disabled = false;
-        createServerBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Create';
-      }
-    });
-
     serversListEl.addEventListener('click', async (e)=>{
       const changeBtn = e.target.closest('.change-template');
       if (changeBtn) {
@@ -1394,6 +1513,13 @@ function renderServers(list){
         const row = changeBtn.closest('.server-row');
         const currentTemplate = (row && row.dataset.template) || (changeBtn.dataset.template ? decodeURIComponent(changeBtn.dataset.template) : '');
         openChangeTemplateModal(name, currentTemplate || '');
+        return;
+      }
+
+      const startupBtn = e.target.closest('.edit-startup');
+      if (startupBtn) {
+        const row = startupBtn.closest('.server-row');
+        openStartupModalForRow(row);
         return;
       }
 
@@ -1430,6 +1556,10 @@ function renderServers(list){
         btn.disabled = false;
       }
     });
+
+    if(startupCancel) startupCancel.addEventListener('click', closeStartupModal);
+    if(startupOverlay) startupOverlay.addEventListener('click', (e)=>{ if(e.target === startupOverlay) closeStartupModal(); });
+    if(startupSave) startupSave.addEventListener('click', saveStartupConfig);
 
     changeTemplateCancel.addEventListener('click', closeChangeTemplateModal);
     changeTemplateOverlay.addEventListener('click', (e)=>{ if(e.target === changeTemplateOverlay) closeChangeTemplateModal(); });

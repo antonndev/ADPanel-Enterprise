@@ -1392,8 +1392,13 @@ app.get("/api/settings/servers", (req, res) => {
       });
     });
 
-    const items = Array.from(byName.values()).sort((a,b) => a.name.localeCompare(b.name));
-    return res.json({ items });
+  const items = Array.from(byName.values())
+    .map(v => ({
+      ...v,
+      docker: v?.docker || null
+    }))
+    .sort((a,b) => a.name.localeCompare(b.name));
+  return res.json({ items });
   } catch (e) {
     console.error("Failed to list servers:", e);
     return res.status(500).json({ error: "failed to read servers" });
@@ -1533,6 +1538,69 @@ app.post("/api/settings/servers/:name/template", (req, res) => {
   }
 
   return res.json({ ok: true, template: updated.template, start: updated.start || null });
+});
+
+app.post("/api/settings/servers/:name/docker", (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
+
+  let nameParam = req.params.name || "";
+  try {
+    nameParam = decodeURIComponent(nameParam);
+  } catch {}
+
+  const name = String(nameParam).trim();
+  if (!name || name.includes("..") || /[\/\\]/.test(name)) {
+    return res.status(400).json({ error: "invalid name" });
+  }
+
+  function toNumber(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return n;
+  }
+
+  const body = req.body || {};
+  const docker = {
+    command: typeof body.command === "string" ? body.command.trim() : undefined,
+    cpus: toNumber(body.cpus),
+    cpuPercent: toNumber(body.cpuPercent),
+    memoryMb: toNumber(body.memoryMb),
+    swapMb: toNumber(body.swapMb),
+    storageMb: toNumber(body.storageMb),
+  };
+
+  // Normalize empty strings to undefined
+  if (docker.command === "") docker.command = undefined;
+
+  const list = loadServersIndex();
+  const idx = list.findIndex(e => e && e.name === name);
+  if (idx < 0) return res.status(404).json({ error: "server-not-found" });
+  const current = list[idx] || { name };
+
+  const mergedDocker = Object.assign({}, current.docker || {});
+  if (docker.command !== undefined) mergedDocker.command = docker.command;
+  if (!Number.isNaN(docker.cpus)) mergedDocker.cpus = docker.cpus;
+  if (!Number.isNaN(docker.cpuPercent)) mergedDocker.cpuPercent = docker.cpuPercent;
+  if (!Number.isNaN(docker.memoryMb)) mergedDocker.memoryMb = docker.memoryMb;
+  if (!Number.isNaN(docker.swapMb)) mergedDocker.swapMb = docker.swapMb;
+  if (!Number.isNaN(docker.storageMb)) mergedDocker.storageMb = docker.storageMb;
+
+  const updated = Object.assign({}, current, { docker: mergedDocker });
+  list[idx] = updated;
+  saveServersIndex(list);
+
+  try {
+    const metaPath = path.join(BOTS_DIR, name, "adpanel.json");
+    if (fs.existsSync(metaPath)) {
+      const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+      const mergedMeta = Object.assign({}, meta, { docker: mergedDocker });
+      fs.writeFileSync(metaPath, JSON.stringify(mergedMeta, null, 2), "utf8");
+    }
+  } catch (e) {
+    console.warn("[servers/docker] failed to sync adpanel.json:", e && e.message);
+  }
+
+  return res.json({ ok: true, docker: mergedDocker });
 });
 
 // --- MY SERVERS ---
@@ -3055,6 +3123,28 @@ function buildArgsFromTemplate(name, tpl, botDir) {
   const d = tpl.docker || {};
   const args = ["run", "-d", "--name", name];
   if (d.restart) args.push("--restart", d.restart);
+
+  const cpus = Number(d.cpus || d.cpu || 0);
+  if (cpus > 0) args.push("--cpus", String(cpus));
+
+  const cpuPercent = Number(d.cpuPercent || d.cpu_percent || 0);
+  if (!cpus && cpuPercent > 0) {
+    const quota = Math.round(cpuPercent * 1000);
+    args.push("--cpu-period", "100000", "--cpu-quota", String(quota));
+  }
+
+  const memMb = Number(d.memoryMb || d.memory || 0);
+  if (memMb > 0) args.push("--memory", `${memMb}m`);
+
+  const swapMb = Number(d.swapMb || 0);
+  if (memMb > 0 && swapMb >= 0) {
+    const total = memMb + swapMb;
+    args.push("--memory-swap", `${total}m`);
+  }
+
+  const storageMb = Number(d.storageMb || 0);
+  if (storageMb > 0) args.push("--storage-opt", `size=${storageMb}m`);
+
   (d.ports || []).forEach(p => { if (p) args.push("-p", p); });
   Object.entries(d.env || {}).forEach(([k, v]) => args.push("-e", `${k}=${v ?? ""}`));
   (d.volumes || []).forEach(v => {
@@ -3066,6 +3156,28 @@ function buildArgsFromTemplate(name, tpl, botDir) {
   const final = [...args, image];
   if (d.command && String(d.command).trim()) final.push("sh", "-lc", d.command);
   return final;
+}
+
+function mergeDockerOptions(base, extra) {
+  const out = Object.assign({}, base || {});
+  const src = extra && typeof extra === "object" ? extra : {};
+
+  if (Array.isArray(src.ports)) out.ports = src.ports;
+  if (src.env) out.env = Object.assign({}, out.env || {}, src.env || {});
+  if (Array.isArray(src.volumes)) out.volumes = src.volumes;
+
+  ["command", "restart", "image", "tag"].forEach((key) => {
+    if (typeof src[key] === "string" && src[key]) out[key] = src[key];
+  });
+
+  ["cpus", "cpuPercent", "memoryMb", "swapMb", "storageMb"].forEach((key) => {
+    if (src[key] !== undefined && src[key] !== null && src[key] !== "") {
+      const n = Number(src[key]);
+      out[key] = Number.isFinite(n) ? n : src[key];
+    }
+  });
+
+  return out;
 }
 function guessArgsForLegacyRun(name, botDir, file, port) {
   if (file && file.endsWith(".js")) {
@@ -3921,6 +4033,7 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
           const normalizedTemplateId = normalizeTemplateId(effectiveTemplateId);
           const resolvedTemplateDef = normalizedTemplateId ? findTemplateById(normalizedTemplateId) : null;
           const canonicalTemplateId = resolvedTemplateDef ? normalizedTemplateId : (normalizedTemplateId || null);
+          const dockerOverrides = mergeDockerOptions(entry?.docker, overrideDocker);
 
           function buildTemplateFromRuntime(baseId, runtime) {
             if (!runtime || !runtime.image) return null;
@@ -3950,7 +4063,7 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
               : clampAppPort(chosenPort, defaultPort);
             const r = await httpRequestJson(
               `${baseUrl}/v1/servers/${encodeURIComponent(bot)}/start`,
-              "POST", headers, { hostPort, templateId: canonicalTemplateId || undefined, runtime: entry?.runtime }, 20000
+              "POST", headers, { hostPort, templateId: canonicalTemplateId || undefined, runtime: entry?.runtime, docker: dockerOverrides }, 20000
             );
             if (r.status !== 200 || !(r.json && r.json.ok)) {
               const msg = (r.json && (r.json.error || r.json.detail)) || `node status ${r.status}`;
@@ -3967,8 +4080,9 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
           const runtimeTemplate = buildTemplateFromRuntime(canonicalTemplateId, entry?.runtime);
           if (canonicalTemplateId && (resolvedTemplateDef || runtimeTemplate)) {
             const tpl = resolvedTemplateDef || runtimeTemplate;
-            
+
             const tplCopy = JSON.parse(JSON.stringify(tpl));
+            tplCopy.docker = tplCopy.docker || {};
             if (normalizedTemplateId === "minecraft") {
               const srv = findServer(bot);
               const hostPort = srv && srv.port ? clampPort(srv.port) : clampPort(port || 25565);
@@ -3989,49 +4103,19 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
                 tplCopy.docker.ports = [`${mappedPort}:${mappedPort}`];
               }
               tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, { PORT: String(mappedPort) });
+            }
 
-              if (overrideDocker && typeof overrideDocker === "object") {
-                if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
-                if (overrideDocker.env) {
-                  tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
-                }
-                if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
-                if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
-                if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
-                if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
-                if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
+            if (dockerOverrides && typeof dockerOverrides === "object") {
+              if (Array.isArray(dockerOverrides.ports) && dockerOverrides.ports.length) tplCopy.docker.ports = dockerOverrides.ports;
+              if (dockerOverrides.env) {
+                tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, dockerOverrides.env || {});
               }
-              tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, { PORT: String(mappedPort) });
-
-              if (overrideDocker && typeof overrideDocker === "object") {
-                if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
-                if (overrideDocker.env) {
-                  tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
+              if (Array.isArray(dockerOverrides.volumes) && dockerOverrides.volumes.length) tplCopy.docker.volumes = dockerOverrides.volumes;
+              ["command","restart","image","tag","cpus","cpuPercent","memoryMb","swapMb","storageMb"].forEach(k => {
+                if (dockerOverrides[k] !== undefined && dockerOverrides[k] !== null && dockerOverrides[k] !== "") {
+                  tplCopy.docker[k] = dockerOverrides[k];
                 }
-                if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
-                if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
-                if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
-                if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
-                if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
-              }
-              tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, { PORT: String(mappedPort) });
-
-              if (overrideDocker && typeof overrideDocker === "object") {
-                if (Array.isArray(overrideDocker.ports)) tplCopy.docker.ports = overrideDocker.ports;
-                if (overrideDocker.env) {
-                  tplCopy.docker.env = Object.assign({}, tplCopy.docker.env || {}, overrideDocker.env || {});
-                }
-                if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
-                if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
-                if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
-                if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
-                if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
-              }
-              if (Array.isArray(overrideDocker.volumes)) tplCopy.docker.volumes = overrideDocker.volumes;
-              if (typeof overrideDocker.command === "string") tplCopy.docker.command = overrideDocker.command;
-              if (typeof overrideDocker.restart === "string") tplCopy.docker.restart = overrideDocker.restart;
-              if (overrideDocker.image) tplCopy.docker.image = overrideDocker.image;
-              if (overrideDocker.tag) tplCopy.docker.tag = overrideDocker.tag;
+              });
             }
 
             runArgs = buildArgsFromTemplate(bot, tplCopy, botDir);

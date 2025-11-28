@@ -611,8 +611,7 @@ app.post("/api/nodes/:id/server/action", async (req, res) => {
     }
 
     path = `/v1/servers/${encodeURIComponent(name)}/start`;
-    // agentul tău acceptă hostPort în body; păstrează dacă vine din UI
-    if (req.body?.hostPort) body.hostPort = Number(req.body.hostPort);
+    body = startPayloadFor(name, req.body?.hostPort);
   } else if (cmd === "stop") {
     path = `/v1/servers/${encodeURIComponent(name)}/stop`;
   } else if (cmd === "restart") {
@@ -1160,8 +1159,9 @@ app.post("/api/nodes/server/:name/upload", upload.single("file"), async (req, re
 
 function startPayloadFor(name, hostPortFromReq) {
   const srv = findServerByNameOrId(name);
-  const chosenPort = Number.isFinite(hostPortFromReq)
-    ? hostPortFromReq
+  const hostPortNum = Number(hostPortFromReq);
+  const chosenPort = Number.isFinite(hostPortNum)
+    ? hostPortNum
     : (Number.isFinite(srv?.port) ? srv.port : undefined);
 
   const payload = {};
@@ -1169,6 +1169,7 @@ function startPayloadFor(name, hostPortFromReq) {
   if (srv?.template) payload.templateId = srv.template;
   if (srv?.runtime) payload.runtime = srv.runtime;
   if (srv?.start) payload.start = srv.start;
+  if (srv?.docker) payload.docker = srv.docker;
   return payload;
 }
 
