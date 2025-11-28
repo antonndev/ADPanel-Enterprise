@@ -1323,6 +1323,9 @@ function renderServers(list){
         startupOverlay.classList.remove('show');
         startupOverlay.setAttribute('aria-hidden','true');
       }
+      if(startupModal){
+        startupModal.classList.remove('show');
+      }
       startupServer = null;
       if(startupFeedback) startupFeedback.textContent = '';
     }
@@ -1346,6 +1349,9 @@ function renderServers(list){
       fillStartupFieldsFromRow(row);
       startupOverlay.classList.add('show');
       startupOverlay.setAttribute('aria-hidden','false');
+      if(startupModal){
+        startupModal.classList.add('show');
+      }
     }
 
     function updateStartupRowData(name, docker){
