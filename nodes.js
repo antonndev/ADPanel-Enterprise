@@ -881,6 +881,10 @@ setInterval(async () => {
 const NODE_VOLUME_ROOT = "/var/lib/node/volumes";
 const nodeVolumeRootCache = new Map();
 
+function saveServers(list) {
+  writeJson(SERVERS_FILE, Array.isArray(list) ? list : []);
+}
+
 // servers.json helpers
 function loadServers() {
   const arr = readJson(SERVERS_FILE, []);
@@ -969,13 +973,55 @@ function mapFsEntries(entries) {
   });
   return out;
 }
-function remoteContext(serverName) {
-  const srv = findServerByNameOrId(serverName);
-  if (!srv) return { exists: false };
-  const ref = serverNodeRef(srv);
-  if (!ref) return { exists: true, remote: false, info: buildServerInfo(srv) };
+async function discoverServerOnAnyNode(serverName) {
+  const nodes = loadNodes();
+  const trimmed = String(serverName || "").trim();
+  for (const n of nodes) {
+    const { status, json } = await callNodeApi(
+      n,
+      `/v1/servers/${encodeURIComponent(trimmed)}`,
+      "GET",
+      null,
+      DEFAULT_NODE_TIMEOUT_MS
+    );
+    if (status === 200 && json && json.ok) {
+      const meta = json.meta || {};
+      const entry = {
+        name: trimmed,
+        node: n.uuid || n.id || n.name,
+        start: meta.start || null,
+        template: meta.type || null,
+        runtime: meta.runtime || null,
+        dir: meta.dir || meta.path || trimmed,
+        hostPort: meta.hostPort || meta.port || null,
+      };
 
-  const node = findNodeByIdOrName(ref);
+      // persist mapping for subsequent calls
+      const current = loadServers();
+      const idx = current.findIndex((s) => String(s.name || "").toLowerCase() === trimmed.toLowerCase());
+      if (idx >= 0) current[idx] = Object.assign({}, current[idx], entry);
+      else current.push(entry);
+      saveServers(current);
+
+      return { srv: entry, node: n };
+    }
+  }
+  return { srv: null, node: null };
+}
+
+async function remoteContext(serverName) {
+  let srv = findServerByNameOrId(serverName);
+  let node = srv ? findNodeByIdOrName(serverNodeRef(srv)) : null;
+
+  if (!srv || !node) {
+    const discovered = await discoverServerOnAnyNode(serverName);
+    if (discovered && discovered.srv && discovered.node) {
+      srv = srv || discovered.srv;
+      node = node || discovered.node;
+    }
+  }
+
+  if (!srv) return { exists: false };
   if (!node) return { exists: true, remote: false, info: buildServerInfo(srv) };
 
   // Prefer the exact folder reference if it exists on the server record; fall back to
@@ -995,7 +1041,7 @@ function remoteContext(serverName) {
 }
 
 async function remoteFsContext(serverName) {
-  const ctx = remoteContext(serverName);
+  const ctx = await remoteContext(serverName);
   if (!ctx.remote || !ctx.node) return ctx;
 
   const root = await resolveNodeVolumeRoot(ctx.node);
@@ -1273,7 +1319,7 @@ async function seedRuntimeOnNode(node, name, hostPortHint) {
 // 9) ACTION (run/stop/restart/status) – mapat pe /v1/servers/:name/*
 app.post("/api/nodes/server/:name/action", async (req, res) => {
   try {
-    const ctx = remoteContext(req.params.name);
+    const ctx = await remoteContext(req.params.name);
     if (!ctx.exists) return res.status(404).json({ error: "server not found" });
     if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1314,7 +1360,7 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
 // 10) CONSOLE COMMAND – mapat pe /v1/servers/:name/command
 app.post("/api/nodes/server/:name/command", async (req, res) => {
   try {
-    const ctx = remoteContext(req.params.name);
+    const ctx = await remoteContext(req.params.name);
     if (!ctx.exists) return res.status(404).json({ error: "server not found" });
     if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
