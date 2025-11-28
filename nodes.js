@@ -933,11 +933,26 @@ async function resolveNodeVolumeRoot(node) {
       return nodeVolumeRootCache.get(cacheKey);
     }
 
+    let detected = null;
+
     const { status, json } = await callNodeApi(node, "/v1/info", "GET", null, DEFAULT_NODE_TIMEOUT_MS);
-    const detected =
-      (status === 200 && json && json.node && json.node.volumesDir) ? json.node.volumesDir :
-      (status === 200 && json && json.volumes_dir) ? json.volumes_dir :
-      NODE_VOLUME_ROOT;
+    if (status === 200 && json) {
+      detected = (json.node && json.node.volumesDir) || json.volumes_dir || null;
+    }
+
+    // Fallback to unauthenticated /health if auth or parsing failed.
+    if (!detected && status !== 200) {
+      try {
+        const { status: hs, json: hjson } = await httpJson(nodeUrl(node, "/health"), { method: "GET" });
+        if (hs === 200 && hjson) {
+          detected = (hjson.node && hjson.node.volumesDir) || hjson.volumes_dir || null;
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    detected = detected || NODE_VOLUME_ROOT;
 
     if (cacheKey) nodeVolumeRootCache.set(cacheKey, detected || NODE_VOLUME_ROOT);
     return detected || NODE_VOLUME_ROOT;
@@ -963,7 +978,10 @@ function remoteContext(serverName) {
   const node = findNodeByIdOrName(ref);
   if (!node) return { exists: true, remote: false, info: buildServerInfo(srv) };
 
-  const dirName = sanitizeName(srv.name || serverName);
+  // Prefer the exact folder reference if it exists on the server record; fall back to
+  // the sanitized server name so we don't look under the wrong directory on the node.
+  const dirCandidates = [srv.botDir, srv.dir, srv.path, srv.name, serverName].filter(Boolean);
+  const dirName = sanitizeName(dirCandidates.find((n) => sanitizeName(n)) || serverName);
   const baseDir = `${NODE_VOLUME_ROOT}/${dirName}`;
   return {
     exists: true,
