@@ -53,6 +53,13 @@
     .modal .tabs button.active { background: var(--accent, #4f46e5); color: #fff; }
     .modal .tab-page { display:none; overflow:auto; }
     .modal .tab-page.active { display:block; }
+    .template-picker { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin-top:12px; }
+    .template-pill { border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03); border-radius:12px; padding:12px; text-align:left; cursor:pointer; transition:all 0.15s ease; }
+    .template-pill:hover { border-color:rgba(79,70,229,0.5); box-shadow:0 10px 30px rgba(0,0,0,0.25); transform:translateY(-1px); }
+    .template-pill.active { border-color:var(--accent,#4f46e5); background:rgba(79,70,229,0.08); box-shadow:0 12px 32px rgba(79,70,229,0.18); }
+    .template-pill .title { font-weight:700; font-size:15px; }
+    .template-pill .desc { color:var(--muted); margin-top:6px; font-size:13px; line-height:1.4; }
+    .template-pill .tag { display:inline-block; margin-top:8px; font-size:12px; padding:4px 8px; border-radius:999px; background:rgba(255,255,255,0.05); color:var(--muted); }
     .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     .field-col { display:flex; flex-direction:column; gap:6px; }
     .field-col input, .field-col textarea, .field-col select {
@@ -436,6 +443,27 @@
     </div>
   </div>
 
+  <!-- Change server template modal -->
+  <div id="changeTemplateOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal" id="changeTemplateModal">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div>
+          <h3 style="margin:0;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-wand-magic-sparkles"></i> Change template</h3>
+          <div class="muted" id="changeTemplateSubtitle" style="margin-top:4px"></div>
+        </div>
+        <div class="inline-badge" id="changeTemplateCurrent">Current: —</div>
+      </div>
+
+      <div id="changeTemplateList" class="template-picker" style="margin-top:16px"></div>
+      <div id="changeTemplateFeedback" class="muted" style="margin-top:8px"></div>
+
+      <div class="actions" style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost" id="changeTemplateCancel">Cancel</button>
+        <button class="btn" id="changeTemplateSave"><i class="fa-solid fa-check"></i> Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Change password modal -->
   <div id="modalOverlay" class="modal-overlay" aria-hidden="true">
     <div class="modal" id="changeModal">
@@ -666,6 +694,18 @@
     const ct_description = document.getElementById('ct_description');
     const ct_image = document.getElementById('ct_image');
     const ct_tag = document.getElementById('ct_tag');
+    const changeTemplateOverlay = document.getElementById('changeTemplateOverlay');
+    const changeTemplateModal = document.getElementById('changeTemplateModal');
+    const changeTemplateList = document.getElementById('changeTemplateList');
+    const changeTemplateSubtitle = document.getElementById('changeTemplateSubtitle');
+    const changeTemplateCurrent = document.getElementById('changeTemplateCurrent');
+    const changeTemplateFeedback = document.getElementById('changeTemplateFeedback');
+    const changeTemplateCancel = document.getElementById('changeTemplateCancel');
+    const changeTemplateSave = document.getElementById('changeTemplateSave');
+    let templatesCache = [];
+    let templatesLoaded = false;
+    let templateModalServer = null;
+    let selectedTemplateId = null;
 
     const serversListEl = document.getElementById('serversList');
     const createServerBtn = document.getElementById('createServerBtn');
@@ -1040,17 +1080,24 @@ function renderServers(list){
     const name = item.name || String(item);
     const isLocal = (item && typeof item.isLocal === 'boolean') ? item.isLocal : (!item.nodeId);
     const chipText = isLocal ? 'ID: localhost' : `ID: ${item.nodeId}`;
+    const templateId = (item && item.template) ? String(item.template) : null;
+    const templateLabel = templateId ? templateId : 'template: unknown';
 
     const row = document.createElement('div');
     row.className = 'server-row clickable-card';
     row.dataset.name = name;
+    if (templateId) row.dataset.template = templateId;
     row.innerHTML = `
       <div class="left">
         <div class="iconWrap"><i class="fa-solid fa-folder"></i></div>
         <div class="name">${escapeHtml(name)}</div>
         <span class="inline-badge" style="margin-left:8px">${escapeHtml(chipText)}</span>
+        <span class="inline-badge" style="margin-left:8px;background:rgba(79,70,229,0.12);color:var(--text)">${escapeHtml(templateLabel)}</span>
       </div>
       <div class="actions">
+        <button class="btn ghost change-template" data-name="${encodeURIComponent(name)}" data-template="${templateId ? encodeURIComponent(templateId) : ''}" title="Change template">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </button>
         <button class="btn ghost delete-server" data-name="${encodeURIComponent(name)}" title="Delete ${escapeHtml(name)}">
           <i class="fa-solid fa-trash"></i>
         </button>
@@ -1079,7 +1126,9 @@ function renderServers(list){
           return;
         }
         const data = await res.json();
-        renderTemplates(Array.isArray(data.templates) ? data.templates : []);
+        templatesCache = Array.isArray(data.templates) ? data.templates : [];
+        templatesLoaded = true;
+        renderTemplates(templatesCache);
       } catch (e) {
         console.error(e);
         templatesListEl.innerHTML = `<div style="padding:12px;color:var(--muted)">Network error</div>`;
@@ -1120,6 +1169,81 @@ function renderServers(list){
         `;
         templatesListEl.appendChild(row);
       });
+    }
+
+    async function ensureTemplatesLoadedForModal(){
+      if(templatesLoaded && Array.isArray(templatesCache) && templatesCache.length) return templatesCache;
+      try {
+        const res = await fetch('/api/settings/templates');
+        if(res.ok){
+          const data = await res.json().catch(()=>({ templates: [] }));
+          templatesCache = Array.isArray(data.templates) ? data.templates : [];
+          templatesLoaded = true;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      return templatesCache || [];
+    }
+
+    function closeChangeTemplateModal(){
+      changeTemplateOverlay.classList.remove('show');
+      changeTemplateModal.classList.remove('show');
+      changeTemplateFeedback.textContent = '';
+      templateModalServer = null;
+      selectedTemplateId = null;
+    }
+
+    function templateDisplayName(tpl){
+      return tpl || 'template: unknown';
+    }
+
+    async function renderChangeTemplateOptions(){
+      changeTemplateList.innerHTML = `<div style="padding:12px;color:var(--muted)">Loading templates…</div>`;
+      const list = await ensureTemplatesLoadedForModal();
+      if(!Array.isArray(list) || list.length === 0){
+        changeTemplateList.innerHTML = `<div style="padding:12px;color:var(--muted)">No templates available. Create one first.</div>`;
+        return;
+      }
+      changeTemplateList.innerHTML = '';
+      list.forEach(tpl => {
+        const card = document.createElement('div');
+        const id = tpl && tpl.id ? String(tpl.id) : '';
+        card.className = 'template-pill clickable-card';
+        if(selectedTemplateId && id.toLowerCase() === String(selectedTemplateId).toLowerCase()) card.classList.add('active');
+        card.innerHTML = `
+          <div class="title">${escapeHtml(tpl.name || id || 'Untitled')}</div>
+          <div class="desc">${escapeHtml(tpl.description || 'No description provided.')}</div>
+          <div class="tag">ID: ${escapeHtml(id || 'n/a')}</div>
+        `;
+        card.addEventListener('click', ()=>{
+          selectedTemplateId = id;
+          renderChangeTemplateOptions();
+          changeTemplateFeedback.textContent = '';
+        });
+        changeTemplateList.appendChild(card);
+      });
+    }
+
+    function openChangeTemplateModal(name, currentTemplate){
+      templateModalServer = name;
+      selectedTemplateId = currentTemplate || '';
+      changeTemplateSubtitle.textContent = `Switch ${name} to another template from your library.`;
+      changeTemplateCurrent.textContent = `Current: ${templateDisplayName(currentTemplate)}`;
+      changeTemplateFeedback.textContent = '';
+      renderChangeTemplateOptions();
+      changeTemplateOverlay.classList.add('show');
+      changeTemplateModal.classList.add('show');
+    }
+
+    function updateServerTemplateInRow(name, templateId){
+      const row = Array.from(serversListEl.querySelectorAll('.server-row')).find(r => r.dataset.name === name);
+      if(!row) return;
+      row.dataset.template = templateId || '';
+      const badges = row.querySelectorAll('.inline-badge');
+      if(badges && badges[1]) badges[1].textContent = templateDisplayName(templateId);
+      const changeBtn = row.querySelector('.change-template');
+      if(changeBtn) changeBtn.dataset.template = templateId ? encodeURIComponent(templateId) : '';
     }
 
     function openTemplateModal(){
@@ -1262,6 +1386,17 @@ function renderServers(list){
     });
 
     serversListEl.addEventListener('click', async (e)=>{
+      const changeBtn = e.target.closest('.change-template');
+      if (changeBtn) {
+        const encName = changeBtn.dataset.name;
+        if (!encName) return;
+        const name = decodeURIComponent(encName);
+        const row = changeBtn.closest('.server-row');
+        const currentTemplate = (row && row.dataset.template) || (changeBtn.dataset.template ? decodeURIComponent(changeBtn.dataset.template) : '');
+        openChangeTemplateModal(name, currentTemplate || '');
+        return;
+      }
+
       const btn = e.target.closest('.delete-server');
       if(!btn) return;
       const encName = btn.dataset.name;
@@ -1293,6 +1428,39 @@ function renderServers(list){
         console.error(err);
         alert('Network error while deleting server');
         btn.disabled = false;
+      }
+    });
+
+    changeTemplateCancel.addEventListener('click', closeChangeTemplateModal);
+    changeTemplateOverlay.addEventListener('click', (e)=>{ if(e.target === changeTemplateOverlay) closeChangeTemplateModal(); });
+
+    changeTemplateSave.addEventListener('click', async ()=>{
+      if(!templateModalServer) return;
+      if(!selectedTemplateId){
+        changeTemplateFeedback.textContent = 'Select a template first.';
+        return;
+      }
+      try {
+        changeTemplateSave.disabled = true;
+        changeTemplateSave.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving';
+        const res = await fetch(`/api/settings/servers/${encodeURIComponent(templateModalServer)}/template`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ templateId: selectedTemplateId })
+        });
+        const data = await res.json().catch(()=>({ error: 'Invalid response' }));
+        if(!res.ok){
+          changeTemplateFeedback.textContent = data.error || 'Failed to update template';
+          return;
+        }
+        updateServerTemplateInRow(templateModalServer, data.template || selectedTemplateId);
+        closeChangeTemplateModal();
+      } catch (e) {
+        console.error(e);
+        changeTemplateFeedback.textContent = 'Network error while saving template';
+      } finally {
+        changeTemplateSave.disabled = false;
+        changeTemplateSave.innerHTML = '<i class="fa-solid fa-check"></i> Save';
       }
     });
 

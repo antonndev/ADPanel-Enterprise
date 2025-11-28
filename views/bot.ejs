@@ -1400,22 +1400,31 @@ function updateStoreVisibility(){
 
   // Afișăm Store:
   // - pe discord-bot: pentru versiuni (nodejs/python)
-  // - pe minecraft: DOAR pentru plugins (dacă vrei să păstrezi magazinul de pluginuri)
+  // - pe minecraft: pentru versiuni și plugins/mods
   const showForDiscord = (tpl === 'discord-bot');
-  const showForMcPlugins = (tpl === 'minecraft');
+  const showForMinecraft = (tpl === 'minecraft');
 
-  // Butonul Store apare dacă e discord-bot sau minecraft (plugins)
-  const shouldShowBtn = showForDiscord || showForMcPlugins;
+  const showVersions = showForDiscord || showForMinecraft;
+  const showPlugins  = showForMinecraft;
+
+  // Butonul Store apare dacă există cel puțin un tab vizibil
+  const shouldShowBtn = showVersions || showPlugins;
   [btn, dock].forEach(el => { if (el) el.classList.toggle('hidden', !shouldShowBtn); });
 
-  // Tabs: Versions doar pe discord-bot; Plugins doar pe Minecraft
   if (tabs) tabs.classList.toggle('hidden', !shouldShowBtn);
 
-  if (storeTabVersions) storeTabVersions.classList.toggle('hidden', !showForDiscord);
-  if (storeTabPlugins)  storeTabPlugins.classList.toggle('hidden', !showForMcPlugins);
+  if (storeTabVersions) storeTabVersions.classList.toggle('hidden', !showVersions);
+  if (storeTabPlugins)  storeTabPlugins.classList.toggle('hidden', !showPlugins);
 
-  // dacă nu suntem pe discord-bot, forțează activ tab-ul Plugins (sau nimic)
-  if (!showForDiscord && currentStoreTab === 'versions') setActiveStoreTab(showForMcPlugins ? 'plugins' : 'versions');
+  // dacă tab-ul curent nu e disponibil, alege primul disponibil (prioritate Versions)
+  const allowedTabs = new Set();
+  if (showVersions) allowedTabs.add('versions');
+  if (showPlugins)  allowedTabs.add('plugins');
+
+  if (!allowedTabs.has(currentStoreTab)) {
+    const fallbackTab = showVersions ? 'versions' : (showPlugins ? 'plugins' : currentStoreTab);
+    setActiveStoreTab(fallbackTab);
+  }
 }
 
       function setActiveStoreTab(tab){
