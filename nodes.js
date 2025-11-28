@@ -1185,6 +1185,7 @@ async function seedRuntimeOnNode(node, name, hostPortHint) {
         start: srv.start || srv.startFile || srv.entry || null,
         port: srv.hostPort || srv.port || srv.server_port || hostPortHint || null,
         nodeId: node?.uuid || node?.id || null,
+        docker: srv.docker || null,
       };
       await callNodeApi(
         node,

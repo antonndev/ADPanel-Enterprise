@@ -8,7 +8,7 @@ const dns = require("dns").promises;
 const AdmZip = require("adm-zip");
 const multer = require("multer");
 const session = require("express-session");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const FileStore = require("session-file-store")(session);
 const https = require("https");
 const _startedOnce = new Set();
@@ -3119,6 +3119,30 @@ function cleanLog(bot, chunk) {
   return out.join("\n").replace(/\n{2,}/g, "\n");
 }
 
+// Detect if the current docker engine supports per-container storage limits.
+// The error "--storage-opt is supported only for overlay over xfs with 'pquota'" means
+// we should skip setting the option to allow the container to start.
+let storageOptSupport = null;
+function detectStorageOptSupport() {
+  if (storageOptSupport !== null) return storageOptSupport;
+  try {
+    const raw = execSync("docker info --format '{{.Driver}}|{{json .DriverStatus}}'", { encoding: "utf8" }).trim();
+    const [driver, statusJson] = raw.split("|");
+    const driverStatus = JSON.parse(statusJson || "null");
+    const backingFs = Array.isArray(driverStatus)
+      ? (driverStatus.find((row) => Array.isArray(row) && /backing filesystem/i.test(row[0])) || [])[1]
+      : null;
+    const hasPquota = Array.isArray(driverStatus)
+      ? !!driverStatus.find((row) => Array.isArray(row) && /pquota/i.test(row.join(" ")))
+      : false;
+    storageOptSupport = driver === "overlay2" && /xfs/i.test(String(backingFs || "")) && hasPquota;
+  } catch (e) {
+    storageOptSupport = false;
+  }
+  return storageOptSupport;
+}
+detectStorageOptSupport();
+
 function buildArgsFromTemplate(name, tpl, botDir) {
   const d = tpl.docker || {};
   const args = ["run", "-d", "--name", name];
@@ -3143,7 +3167,10 @@ function buildArgsFromTemplate(name, tpl, botDir) {
   }
 
   const storageMb = Number(d.storageMb || 0);
-  if (storageMb > 0) args.push("--storage-opt", `size=${storageMb}m`);
+  if (storageMb > 0) {
+    if (storageOptSupport) args.push("--storage-opt", `size=${storageMb}m`);
+    else console.warn(`[docker] storage limit of ${storageMb}MB skipped: storage-opt not supported on this host`);
+  }
 
   (d.ports || []).forEach(p => { if (p) args.push("-p", p); });
   Object.entries(d.env || {}).forEach(([k, v]) => args.push("-e", `${k}=${v ?? ""}`));
