@@ -880,6 +880,7 @@ setInterval(async () => {
 // server data directory. Correct the default so remote file edits write to the
 // same location the node agent uses.
 const NODE_VOLUME_ROOT = "/var/lib/node/volumes";
+const nodeVolumeRootCache = new Map();
 
 // servers.json helpers
 function loadServers() {
@@ -925,6 +926,26 @@ function safeJoinUnix(base, rel) {
   if (!joined.startsWith(b + "/") && joined !== b) throw new Error("path traversal");
   return joined;
 }
+
+async function resolveNodeVolumeRoot(node) {
+  try {
+    const cacheKey = node?.uuid || node?.id || node?.name;
+    if (cacheKey && nodeVolumeRootCache.has(cacheKey)) {
+      return nodeVolumeRootCache.get(cacheKey);
+    }
+
+    const { status, json } = await callNodeApi(node, "/v1/info", "GET", null, DEFAULT_NODE_TIMEOUT_MS);
+    const detected =
+      (status === 200 && json && json.node && json.node.volumesDir) ? json.node.volumesDir :
+      (status === 200 && json && json.volumes_dir) ? json.volumes_dir :
+      NODE_VOLUME_ROOT;
+
+    if (cacheKey) nodeVolumeRootCache.set(cacheKey, detected || NODE_VOLUME_ROOT);
+    return detected || NODE_VOLUME_ROOT;
+  } catch (_) {
+    return NODE_VOLUME_ROOT;
+  }
+}
 function mapFsEntries(entries) {
   // normalize răspuns agent -> UI
   const out = [];
@@ -943,20 +964,31 @@ function remoteContext(serverName) {
   const node = findNodeByIdOrName(ref);
   if (!node) return { exists: true, remote: false, info: buildServerInfo(srv) };
 
-  const baseDir = `${NODE_VOLUME_ROOT}/${sanitizeName(srv.name || serverName)}`;
+  const dirName = sanitizeName(srv.name || serverName);
+  const baseDir = `${NODE_VOLUME_ROOT}/${dirName}`;
   return {
     exists: true,
     remote: true,
     node,
     nodeId: node.uuid,
+    dirName,
     baseDir,
     info: buildServerInfo(srv)
   };
 }
 
+async function remoteFsContext(serverName) {
+  const ctx = remoteContext(serverName);
+  if (!ctx.remote || !ctx.node) return ctx;
+
+  const root = await resolveNodeVolumeRoot(ctx.node);
+  const dirName = ctx.dirName || sanitizeName(serverName);
+  return Object.assign({}, ctx, { baseDir: `${root}/${dirName}` });
+}
+
 // 1) INFO — spune UI-ului dacă serverul e pe nod extern
 app.get("/api/nodes/server/:name/info", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.json({ ok: false, remote: false, info: null });
 
   // dacă e remote, verifică și starea nodului
@@ -975,7 +1007,7 @@ app.get("/api/nodes/server/:name/info", async (req, res) => {
 
 // 2) LISTARE fișiere (bridge către nod)
 app.get("/api/nodes/server/:name/entries", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -995,7 +1027,7 @@ app.get("/api/nodes/server/:name/entries", async (req, res) => {
 
 // 3) READ FILE
 app.get("/api/nodes/server/:name/file", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1015,7 +1047,7 @@ app.get("/api/nodes/server/:name/file", async (req, res) => {
 
 // 4) WRITE FILE
 app.post("/api/nodes/server/:name/file", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1036,7 +1068,7 @@ app.post("/api/nodes/server/:name/file", async (req, res) => {
 
 // 5) DELETE (file/folder)
 app.post("/api/nodes/server/:name/delete", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1057,7 +1089,7 @@ app.post("/api/nodes/server/:name/delete", async (req, res) => {
 
 // 6) RENAME
 app.post("/api/nodes/server/:name/rename", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1079,7 +1111,7 @@ app.post("/api/nodes/server/:name/rename", async (req, res) => {
 
 // 7) EXTRACT (arhive)
 app.post("/api/nodes/server/:name/extract", async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1099,7 +1131,7 @@ app.post("/api/nodes/server/:name/extract", async (req, res) => {
 
 // 8) UPLOAD (multipart -> base64 forward)
 app.post("/api/nodes/server/:name/upload", upload.single("file"), async (req, res) => {
-  const ctx = remoteContext(req.params.name);
+  const ctx = await remoteFsContext(req.params.name);
   if (!ctx.exists) return res.status(404).json({ error: "server not found" });
   if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
@@ -1358,7 +1390,7 @@ app.post("/api/nodes/server/:name/action", async (req, res) => {
 // 11) CREATE FILE / FOLDER (bridge către nod)
 app.post("/api/nodes/server/:name/create", async (req, res) => {
   try {
-    const ctx = remoteContext(req.params.name);
+    const ctx = await remoteFsContext(req.params.name);
     if (!ctx.exists) return res.status(404).json({ error: "server not found" });
     if (!ctx.remote || !ctx.node) return res.status(400).json({ error: "not_remote" });
 
