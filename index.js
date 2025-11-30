@@ -596,6 +596,20 @@ async function sendMinecraftConsoleCommand(containerName, command) {
   return false;
 }
 
+async function shouldUseMinecraftConsole(bot) {
+  const resolved = resolveTemplateForBot(bot);
+  const normalized = normalizeTemplateId(resolved?.template);
+  if (normalized !== "minecraft") return false;
+
+  try {
+    const res = await dockerCollect(["inspect", "-f", "{{.Config.Image}}", bot]);
+    const img = String(res.out || "").toLowerCase();
+    if (img.includes("itzg/minecraft-server")) return true;
+  } catch {}
+
+  return normalized === "minecraft";
+}
+
 // --- NET HELPERS (download jar / JSON) ---
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -785,7 +799,7 @@ const DEFAULT_TEMPLATES = [
       ports: [],
       env: { NODE_ENV: "production" },
       volumes: ["{BOT_DIR}:/app"],
-      command: "sh -c \"cd /app && npm install && node /app/index.js\"",
+      command: "cd /app && npm install && node /app/index.js",
       restart: "unless-stopped"
     }
   },
@@ -3056,14 +3070,14 @@ function stripMinecraftColors(s) {
 function isMinecraftBot(name) {
   // încearcă servers.json (index)
   const entry = findServer(name);
-  if (entry && entry.template && String(entry.template).toLowerCase() === 'minecraft') {
+  if (entry && entry.template && normalizeTemplateId(entry.template) === 'minecraft') {
     return true;
   }
   // fallback: citește adpanel.json din folderul local (dacă există)
   try {
     const metaPath = path.join(BOTS_DIR, name, 'adpanel.json');
     const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-    if (String(meta.type || '').toLowerCase() === 'minecraft') return true;
+    if (normalizeTemplateId(meta.type) === 'minecraft') return true;
     if (/server\.jar$/i.test(String(meta.start || ''))) return true;
   } catch {}
   return false;
@@ -4222,30 +4236,32 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
     const trimmed = (command || '').toString().trim();
     if (!trimmed) return;
 
-    if (isMinecraftBot(bot)) {
+    const useMinecraftConsole = await shouldUseMinecraftConsole(bot);
+    if (useMinecraftConsole) {
       const ok = await sendMinecraftConsoleCommand(bot, trimmed);
       if (!ok) {
         _emitLine(bot, "[ADPanel] Failed to send command to container console");
       }
-    } else {
-      const entry = findServer(bot);
-      const isNpmInstall = /^npm\s+i(nstall)?(\s|$)/i.test(trimmed);
-
-      if (isNpmInstall && !await isContainerRunning(bot)) {
-        await runOfflineNpmInstall(bot, trimmed);
-        return;
-      }
-
-      if (isNpmInstall && isRemoteEntry(entry)) {
-        _emitLine(bot, "[ADPanel] npm install is not supported on remote nodes yet");
-        return;
-      }
-
-      const execCmd = (isNpmInstall ? `cd /app && ${trimmed}` : trimmed);
-      const cp = docker(["exec", "-i", bot, "sh", "-lc", execCmd]);
-      cp.stdout.on("data", d => emitChunkLines(bot, d));
-      cp.stderr.on("data", d => emitChunkLines(bot, d));
+      return;
     }
+
+    const entry = findServer(bot);
+    const isNpmInstall = /^npm\s+i(nstall)?(\s|$)/i.test(trimmed);
+
+    if (isNpmInstall && !await isContainerRunning(bot)) {
+      await runOfflineNpmInstall(bot, trimmed);
+      return;
+    }
+
+    if (isNpmInstall && isRemoteEntry(entry)) {
+      _emitLine(bot, "[ADPanel] npm install is not supported on remote nodes yet");
+      return;
+    }
+
+    const execCmd = (isNpmInstall ? `cd /app && ${trimmed}` : trimmed);
+    const cp = docker(["exec", "-i", bot, "sh", "-lc", execCmd]);
+    cp.stdout.on("data", d => emitChunkLines(bot, d));
+    cp.stderr.on("data", d => emitChunkLines(bot, d));
   });
 });
 
