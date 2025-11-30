@@ -561,6 +561,41 @@ async function pullImage(imageWithTag) {
   catch (e) { console.warn("[docker] pull failed for", imageWithTag, e && e.message); }
 }
 
+/**
+ * Try multiple variants to send a Minecraft console command.
+ * - Tries mc-send-to-console (with/without path, with/without --user 1000)
+ * - Falls back to rcon-cli
+ */
+async function sendMinecraftConsoleCommand(containerName, command) {
+  const name = String(containerName || "").trim();
+  const cmd = String(command || "").trim();
+  if (!name || !cmd) return false;
+
+  if (!(await containerExists(name))) {
+    return false;
+  }
+
+  const attempts = [
+    ["exec", name, "mc-send-to-console", cmd],
+    ["exec", name, "/usr/local/bin/mc-send-to-console", cmd],
+    ["exec", "--user", "1000", name, "mc-send-to-console", cmd],
+    ["exec", "--user", "1000", name, "/usr/local/bin/mc-send-to-console", cmd],
+    ["exec", name, "rcon-cli", cmd],
+    ["exec", "--user", "1000", name, "rcon-cli", cmd]
+  ];
+
+  for (const args of attempts) {
+    try {
+      await dockerCollect(args);
+      return true;
+    } catch (e) {
+      // try next fallback
+    }
+  }
+
+  return false;
+}
+
 // --- NET HELPERS (download jar / JSON) ---
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -1404,6 +1439,12 @@ app.post("/api/settings/servers/:name/template", async (req, res) => {
   }
 
   const updatedEntry = Object.assign({}, current || { name, nodeId: null }, { template: canonicalTemplateId });
+  const suggestedStart = defaultStartForTemplate(canonicalTemplateId);
+  if (suggestedStart !== null) {
+    updatedEntry.start = suggestedStart;
+  } else if (updatedEntry.start && /server\.jar$/i.test(String(updatedEntry.start))) {
+    updatedEntry.start = null;
+  }
   if (idx >= 0) list[idx] = updatedEntry; else list.push(updatedEntry);
 
   if (!saveServersIndex(list)) {
@@ -1415,6 +1456,7 @@ app.post("/api/settings/servers/:name/template", async (req, res) => {
     try {
       const botDir = safeResolve(name);
       const normalized = normalizeTemplateId(canonicalTemplateId);
+      writeTemplateMeta(botDir, canonicalTemplateId, updatedEntry.start);
       await ensureNoContainer(name);
 
       if (normalized === "minecraft") {
@@ -2675,6 +2717,29 @@ function normalizeTemplateId(tpl){
   if (["python", "py"].includes(raw)) return "python";
   if (["mc", "minecraft"].includes(raw)) return "minecraft";
   return raw;
+}
+
+function defaultStartForTemplate(tpl){
+  const norm = normalizeTemplateId(tpl);
+  if (norm === 'minecraft') return 'server.jar';
+  if (norm === 'nodejs' || norm === 'discord-bot') return 'index.js';
+  return null;
+}
+
+function writeTemplateMeta(botDir, templateId, startFile){
+  try {
+    const metaPath = path.join(botDir, 'adpanel.json');
+    let meta = {};
+    if (fs.existsSync(metaPath)) {
+      try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch {}
+    }
+    meta.type = normalizeTemplateId(templateId) || templateId || meta.type || '';
+    const desiredStart = startFile != null ? startFile : defaultStartForTemplate(templateId);
+    if (desiredStart !== null) meta.start = desiredStart || '';
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[template-meta] failed to write adpanel.json:', e && e.message);
+  }
 }
 
 function providerTemplates(provider){
@@ -4158,9 +4223,10 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
     if (!trimmed) return;
 
     if (isMinecraftBot(bot)) {
-      const cp = docker(["exec", "--user", "1000", bot, "mc-send-to-console", command]);
-      cp.stdout.on("data", d => emitChunkLines(bot, d));
-      cp.stderr.on("data", d => emitChunkLines(bot, d));
+      const ok = await sendMinecraftConsoleCommand(bot, trimmed);
+      if (!ok) {
+        _emitLine(bot, "[ADPanel] Failed to send command to container console");
+      }
     } else {
       const entry = findServer(bot);
       const isNpmInstall = /^npm\s+i(nstall)?(\s|$)/i.test(trimmed);
