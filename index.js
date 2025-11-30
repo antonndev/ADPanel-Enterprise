@@ -491,6 +491,83 @@ app.get('/api/servers/:bot/permissions', (req, res) => {
   });
 });
 
+app.get("/api/servers/:name/files/stream", async (req, res) => {
+  if (!isAuthenticated(req)) {
+    return res.status(401).end("not authenticated");
+  }
+
+  const name = String(req.params.name || "").trim();
+  if (!isAdmin(req) && !userHasAccessToServer(req.session.user, name)) {
+    return res.status(403).end("no access to server");
+  }
+
+  const rel = String(req.query.path || "");
+
+  // ==== 1) REMOTE NODE (nod agent) ====
+  const remoteCtx = resolveRemoteFsContext(name);
+  if (remoteCtx.remote) {
+    try {
+      const fullPath = safeJoinUnix(remoteCtx.baseDir, rel || "");
+      const { status, json } = await nodeFsPost(
+        remoteCtx.node,
+        "/v1/fs/read",
+        { path: fullPath, encoding: "utf8" },
+        120000
+      );
+
+      if (status === 404) {
+        return res.status(404).end("file not found");
+      }
+      if (status !== 200 || !json || !json.ok) {
+        return res.status(502).end("node-read-failed");
+      }
+
+      const content = typeof json.content === "string" ? json.content : "";
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      return res.end(content);
+    } catch (e) {
+      console.error("[files/stream remote] error:", e && e.message);
+      return res.status(500).end("remote read error");
+    }
+  }
+
+  // ==== 2) LOCAL (bots/<name>) ====
+  const root = path.join(BOTS_DIR, name);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return res.status(404).end("server not found");
+  }
+
+  const file = safeJoinLocal(root, rel);
+  if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    return res.status(404).end("file not found");
+  }
+
+  // sniff binar
+  try {
+    const fd = await fsp.open(file, "r");
+    const probe = Buffer.alloc(4096);
+    const { bytesRead } = await fd.read(probe, 0, probe.length, 0);
+    await fd.close();
+    if (probe.slice(0, bytesRead).includes(0)) {
+      return res.status(400).end("binary file not supported");
+    }
+  } catch (e) {
+    console.error("[files/stream] sniff failed:", e && e.message);
+    return res.status(500).end("probe error");
+  }
+
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+
+  const stream = fs.createReadStream(file, { encoding: "utf8" });
+  stream.on("error", (err) => {
+    console.error("[files/stream] read error:", err && err.message);
+    if (!res.headersSent) res.statusCode = 500;
+    res.end("read error");
+  });
+
+  stream.pipe(res);
+});
+
 // --- VIEWS / BODY PARSERS / STATIC ---
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
@@ -559,6 +636,55 @@ async function ensureNoContainer(name) { try { await dockerCollect(["rm", "-f", 
 async function pullImage(imageWithTag) {
   try { await dockerCollect(["pull", imageWithTag]); }
   catch (e) { console.warn("[docker] pull failed for", imageWithTag, e && e.message); }
+}
+
+/**
+ * Try multiple variants to send a Minecraft console command.
+ * - Tries mc-send-to-console (with/without path, with/without --user 1000)
+ * - Falls back to rcon-cli
+ */
+async function sendMinecraftConsoleCommand(containerName, command) {
+  const name = String(containerName || "").trim();
+  const cmd = String(command || "").trim();
+  if (!name || !cmd) return false;
+
+  if (!(await containerExists(name))) {
+    return false;
+  }
+
+  const attempts = [
+    ["exec", name, "mc-send-to-console", cmd],
+    ["exec", name, "/usr/local/bin/mc-send-to-console", cmd],
+    ["exec", "--user", "1000", name, "mc-send-to-console", cmd],
+    ["exec", "--user", "1000", name, "/usr/local/bin/mc-send-to-console", cmd],
+    ["exec", name, "rcon-cli", cmd],
+    ["exec", "--user", "1000", name, "rcon-cli", cmd]
+  ];
+
+  for (const args of attempts) {
+    try {
+      await dockerCollect(args);
+      return true;
+    } catch (e) {
+      // try next fallback
+    }
+  }
+
+  return false;
+}
+
+async function shouldUseMinecraftConsole(bot) {
+  const resolved = resolveTemplateForBot(bot);
+  const normalized = normalizeTemplateId(resolved?.template);
+  if (normalized !== "minecraft") return false;
+
+  try {
+    const res = await dockerCollect(["inspect", "-f", "{{.Config.Image}}", bot]);
+    const img = String(res.out || "").toLowerCase();
+    if (img.includes("itzg/minecraft-server")) return true;
+  } catch {}
+
+  return normalized === "minecraft";
 }
 
 // --- NET HELPERS (download jar / JSON) ---
@@ -750,7 +876,7 @@ const DEFAULT_TEMPLATES = [
       ports: [],
       env: { NODE_ENV: "production" },
       volumes: ["{BOT_DIR}:/app"],
-      command: "sh -c \"cd /app && npm install && node /app/index.js\"",
+      command: "cd /app && npm install && node /app/index.js",
       restart: "unless-stopped"
     }
   },
@@ -804,8 +930,24 @@ function saveTemplatesFile(list) {
 }
 
 function findTemplateById(id) {
-  const key = String(id || "").toLowerCase();
-  return loadTemplatesFile().find(t => String(t?.id || "").toLowerCase() === key) || null;
+  const norm = normalizeTemplateId(id);
+  const key = norm || String(id || "").trim().toLowerCase();
+
+  // Try to resolve using normalized IDs first so aliases like "node" map to the
+  // canonical "nodejs" template instead of falling back to legacy guesses.
+  const fromFile = loadTemplatesFile().find(t => {
+    const tplId = t?.id ?? "";
+    return normalizeTemplateId(tplId) === key || String(tplId).trim().toLowerCase() === key;
+  });
+  if (fromFile) return fromFile;
+
+  // Fall back to built-in defaults to keep core templates available even if the
+  // templates.json file was pruned or corrupted.
+  const fromDefaults = DEFAULT_TEMPLATES.find(t => {
+    const tplId = t?.id ?? "";
+    return normalizeTemplateId(tplId) === key || String(tplId).trim().toLowerCase() === key;
+  });
+  return fromDefaults || null;
 }
 
 function findServersUsingTemplate(id) {
@@ -1353,15 +1495,18 @@ app.get("/api/settings/servers", (req, res) => {
     const byName = new Map();
 
     // Locale (fallback: local)
-    local.forEach(n => byName.set(n, { name: n, isLocal: true, nodeId: null }));
+    local.forEach(n => byName.set(n, { name: n, isLocal: true, nodeId: null, template: null }));
 
     // Index (poate să override-uiască “isLocal”)
     (index || []).forEach(e => {
       if (!e || !e.name) return;
+      const prev = byName.get(e.name) || {};
       byName.set(e.name, {
+        ...prev,
         name: e.name,
         isLocal: !(e.nodeId && e.nodeId !== "local"),
-        nodeId: e.nodeId || null
+        nodeId: e.nodeId || null,
+        template: e.template || prev.template || null
       });
     });
 
@@ -1371,6 +1516,92 @@ app.get("/api/settings/servers", (req, res) => {
     console.error("Failed to list servers:", e);
     return res.status(500).json({ error: "failed to read servers" });
   }
+});
+app.post("/api/settings/servers/:name/template", async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
+
+  let nameParam = req.params.name || "";
+  try { nameParam = decodeURIComponent(nameParam); } catch {}
+  const name = String(nameParam).trim();
+  if (!name) return res.status(400).json({ error: "missing name" });
+  if (name.includes("..") || /[\/\\]/.test(name)) return res.status(400).json({ error: "invalid name" });
+
+  const rawTemplate = (req.body && (req.body.templateId || req.body.template)) || "";
+  const templateId = normalizeTemplateId(rawTemplate);
+  if (!templateId) return res.status(400).json({ error: "invalid template id" });
+
+  const template = findTemplateById(templateId);
+  if (!template) {
+    return res.status(404).json({ error: "template not found" });
+  }
+
+  const canonicalTemplateId = String(template.id || templateId);
+
+  const list = loadServersIndex();
+  const idx = list.findIndex(e => e && e.name === name);
+  const current = idx >= 0 ? list[idx] : null;
+  const existsLocally = fs.existsSync(path.join(BOTS_DIR, name));
+  if (!current && !existsLocally) {
+    return res.status(404).json({ error: "server not found" });
+  }
+
+  const updatedEntry = Object.assign({}, current || { name, nodeId: null }, { template: canonicalTemplateId });
+  const suggestedStart = defaultStartForTemplate(canonicalTemplateId);
+  if (suggestedStart !== null) {
+    updatedEntry.start = suggestedStart;
+  } else if (updatedEntry.start && /server\.jar$/i.test(String(updatedEntry.start))) {
+    updatedEntry.start = null;
+  }
+  if (idx >= 0) list[idx] = updatedEntry; else list.push(updatedEntry);
+
+  if (!saveServersIndex(list)) {
+    return res.status(500).json({ error: "failed to save servers" });
+  }
+
+  const isRemote = !!(updatedEntry.nodeId && updatedEntry.nodeId !== "local");
+  if (!isRemote) {
+    try {
+      const botDir = safeResolve(name);
+      const normalized = normalizeTemplateId(canonicalTemplateId);
+      writeTemplateMeta(botDir, canonicalTemplateId, updatedEntry.start);
+      await ensureNoContainer(name);
+
+      if (normalized === "minecraft") {
+        const hostPort = clampPort(updatedEntry.port != null ? updatedEntry.port : 25565);
+        try { await pullImage("itzg/minecraft-server:latest"); } catch {}
+        setMinecraftServerPort(botDir, hostPort);
+        const extraEnv = {
+          TYPE: "CUSTOM",
+          CUSTOM_SERVER: "/data/server.jar",
+          ENABLE_RCON: "false",
+          CREATE_CONSOLE_IN_PIPE: "true",
+          UID: String(typeof process.getuid === "function" ? process.getuid() : 1000),
+          GID: String(typeof process.getgid === "function" ? process.getgid() : 1000),
+          SERVER_PORT: String(hostPort)
+        };
+        const overrideDocker = { ports: [`${hostPort}:25565`] };
+        runTemplateContainerNow(name, canonicalTemplateId, botDir, extraEnv, overrideDocker);
+      } else if (normalized === "discord-bot" || normalized === "nodejs") {
+        const hostPort = clampAppPort(updatedEntry.port, 3001);
+        try { await pullImage("node:20-alpine"); } catch {}
+        const overrideDocker = { ports: [`${hostPort}:${hostPort}`] };
+        runTemplateContainerNow(name, normalized === "nodejs" ? "nodejs" : "discord-bot", botDir, {}, overrideDocker);
+      } else {
+        const hostPort = clampPort(updatedEntry.port);
+        const tplImage = template?.docker?.image;
+        const tplTag = template?.docker?.tag || "latest";
+        if (tplImage) {
+          try { await pullImage(`${tplImage}:${tplTag}`); } catch {}
+        }
+        const overrideDocker = hostPort ? { ports: [`${hostPort}:${hostPort}`] } : {};
+        runTemplateContainerNow(name, canonicalTemplateId, botDir, {}, overrideDocker);
+      }
+    } catch (e) {
+      console.warn("[template-change] failed to recreate container:", e && e.message);
+    }
+  }
+
+  return res.json({ ok: true, server: Object.assign({}, updatedEntry, { template: canonicalTemplateId }) });
 });
 app.delete("/api/settings/servers/:name", async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
@@ -2588,18 +2819,58 @@ try {
 function normalizeTemplateId(tpl){
   const raw = (tpl || '').toString().trim().toLowerCase();
   if (!raw) return '';
-  if (["discord-bot", "discord", "discord bot", "bot", "node", "nodejs", "python"].includes(raw)) return "discord-bot";
+  if (["discord-bot", "discord", "discord bot", "bot"].includes(raw)) return "discord-bot";
+  if (["node", "nodejs", "node.js"].includes(raw)) return "nodejs";
+  if (["python", "py"].includes(raw)) return "python";
   if (["mc", "minecraft"].includes(raw)) return "minecraft";
   return raw;
 }
 
+function defaultStartForTemplate(tpl){
+  const norm = normalizeTemplateId(tpl);
+  if (norm === 'minecraft') return 'server.jar';
+  if (norm === 'nodejs' || norm === 'discord-bot') return 'index.js';
+  return null;
+}
+
+function writeTemplateMeta(botDir, templateId, startFile){
+  try {
+    const metaPath = path.join(botDir, 'adpanel.json');
+    let meta = {};
+    if (fs.existsSync(metaPath)) {
+      try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch {}
+    }
+    meta.type = normalizeTemplateId(templateId) || templateId || meta.type || '';
+    const desiredStart = startFile != null ? startFile : defaultStartForTemplate(templateId);
+    if (desiredStart !== null) meta.start = desiredStart || '';
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[template-meta] failed to write adpanel.json:', e && e.message);
+  }
+}
+
 function providerTemplates(provider){
   if (!provider) return [];
+  const base = [];
+
   if (provider.templates && Array.isArray(provider.templates)) {
-    return provider.templates.map(normalizeTemplateId);
+    base.push(...provider.templates.map(normalizeTemplateId));
+  } else if (provider.template) {
+    base.push(normalizeTemplateId(provider.template));
+  } else {
+    base.push('minecraft');
   }
-  if (provider.template) return [normalizeTemplateId(provider.template)];
-  return ['minecraft'];
+
+  // Providers declared for the generic discord-bot template should also serve
+  // its concrete aliases (nodejs/python) so they stay visible after template
+  // switches that persist the canonical IDs in servers.json.
+  if (base.includes('discord-bot')) {
+    ['nodejs', 'python'].forEach(alias => {
+      if (!base.includes(alias)) base.push(alias);
+    });
+  }
+
+  return base;
 }
 
 function providerSupportsTemplate(provider, tpl){
@@ -2678,6 +2949,21 @@ function buildNodeVersionConfig(versionId, entry, meta){
       command: `sh -c "cd /app && npm install && node /app/${startFile}"`
     }
   };
+}
+
+function enforceNodeDockerRuntime(tpl, entry, meta){
+  if (!tpl) return;
+  tpl.docker = tpl.docker || {};
+  tpl.docker.image = "node";
+  tpl.docker.tag = "20";
+  tpl.docker.volumes = Array.isArray(tpl.docker.volumes) && tpl.docker.volumes.length
+    ? tpl.docker.volumes
+    : ["{BOT_DIR}:/app"];
+  const startFile = inferNodeStart(entry, meta);
+  if (!tpl.docker.command || !String(tpl.docker.command).trim()) {
+    tpl.docker.command = `cd /app && npm install && node /app/${startFile}`;
+  }
+  tpl.docker.env = Object.assign({ NODE_ENV: "production" }, tpl.docker.env || {});
 }
 
 const PYTHON_MAIN_TEMPLATE = `def greet(name="World"):
@@ -2907,14 +3193,14 @@ function stripMinecraftColors(s) {
 function isMinecraftBot(name) {
   // încearcă servers.json (index)
   const entry = findServer(name);
-  if (entry && entry.template && String(entry.template).toLowerCase() === 'minecraft') {
+  if (entry && entry.template && normalizeTemplateId(entry.template) === 'minecraft') {
     return true;
   }
   // fallback: citește adpanel.json din folderul local (dacă există)
   try {
     const metaPath = path.join(BOTS_DIR, name, 'adpanel.json');
     const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-    if (String(meta.type || '').toLowerCase() === 'minecraft') return true;
+    if (normalizeTemplateId(meta.type) === 'minecraft') return true;
     if (/server\.jar$/i.test(String(meta.start || ''))) return true;
   } catch {}
   return false;
@@ -3843,11 +4129,50 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
       switch (cmd) {
         case "run": {
           const entry = findServer(bot);
+          if (!entry) {
+            _emitLine(bot, "[ADPanel] server not found in servers.json");
+            break;
+          }
+
           const resolvedTemplate = resolveTemplateForBot(bot);
-          const effectiveTemplateId = templateId || entry?.template || resolvedTemplate?.template || null;
-          const normalizedTemplateId = normalizeTemplateId(effectiveTemplateId);
-          const resolvedTemplateDef = normalizedTemplateId ? findTemplateById(normalizedTemplateId) : null;
-          const canonicalTemplateId = resolvedTemplateDef ? normalizedTemplateId : (normalizedTemplateId || null);
+          const resolvedMeta = resolvedTemplate?.meta || {};
+
+          // Always rely on the persisted servers.json template first to avoid
+          // stale/incorrect template data coming from the client payload.
+          const persistedTemplateId = entry?.template || null;
+          const fallbackTemplateId = resolvedTemplate?.template || templateId || null;
+          const normalizedTemplateId = normalizeTemplateId(persistedTemplateId || fallbackTemplateId);
+          let resolvedTemplateDef = normalizedTemplateId ? findTemplateById(normalizedTemplateId) : null;
+          const runtimeTemplate = buildTemplateFromRuntime(normalizedTemplateId, entry?.runtime);
+
+          // Fallback: if we have an explicit template id but couldn't load it (e.g. missing
+          // templates.json entry), use the in-memory defaults so we never regress to the
+          // legacy nginx guess for Node.js/other templates.
+          if (!resolvedTemplateDef && normalizedTemplateId) {
+            resolvedTemplateDef = DEFAULT_TEMPLATES.find(t => normalizeTemplateId(t.id) === normalizedTemplateId) || null;
+          }
+
+          // As a last resort for Node.js, synthesize a minimal template so we still start
+          // with the Node image instead of the static nginx fallback.
+          if (!resolvedTemplateDef && normalizedTemplateId === "nodejs") {
+            const startFile = inferNodeStart(entry, resolvedMeta);
+            resolvedTemplateDef = {
+              id: "nodejs",
+              docker: {
+                image: "node",
+                tag: "20-alpine",
+                command: `sh -c "cd /app && npm install && node /app/${startFile}"`,
+                env: { NODE_ENV: "production" },
+                volumes: ["{BOT_DIR}:/app"],
+                ports: [],
+                restart: "unless-stopped"
+              }
+            };
+          }
+
+          const canonicalTemplateId = (resolvedTemplateDef || runtimeTemplate)
+            ? (normalizedTemplateId || runtimeTemplate?.id || null)
+            : (normalizedTemplateId || null);
 
           function buildTemplateFromRuntime(baseId, runtime) {
             if (!runtime || !runtime.image) return null;
@@ -3891,11 +4216,13 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
           await ensureNoContainer(bot);
 
           let runArgs;
-          const runtimeTemplate = buildTemplateFromRuntime(canonicalTemplateId, entry?.runtime);
           if (canonicalTemplateId && (resolvedTemplateDef || runtimeTemplate)) {
             const tpl = resolvedTemplateDef || runtimeTemplate;
             
             const tplCopy = JSON.parse(JSON.stringify(tpl));
+            if (normalizedTemplateId === "nodejs") {
+              enforceNodeDockerRuntime(tplCopy, entry, resolvedMeta);
+            }
             if (normalizedTemplateId === "minecraft") {
               const srv = findServer(bot);
               const hostPort = srv && srv.port ? clampPort(srv.port) : clampPort(port || 25565);
@@ -4073,29 +4400,32 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
     const trimmed = (command || '').toString().trim();
     if (!trimmed) return;
 
-    if (isMinecraftBot(bot)) {
-      const cp = docker(["exec", "--user", "1000", bot, "mc-send-to-console", command]);
-      cp.stdout.on("data", d => emitChunkLines(bot, d));
-      cp.stderr.on("data", d => emitChunkLines(bot, d));
-    } else {
-      const entry = findServer(bot);
-      const isNpmInstall = /^npm\s+i(nstall)?(\s|$)/i.test(trimmed);
-
-      if (isNpmInstall && !await isContainerRunning(bot)) {
-        await runOfflineNpmInstall(bot, trimmed);
-        return;
+    const useMinecraftConsole = await shouldUseMinecraftConsole(bot);
+    if (useMinecraftConsole) {
+      const ok = await sendMinecraftConsoleCommand(bot, trimmed);
+      if (!ok) {
+        _emitLine(bot, "[ADPanel] Failed to send command to container console");
       }
-
-      if (isNpmInstall && isRemoteEntry(entry)) {
-        _emitLine(bot, "[ADPanel] npm install is not supported on remote nodes yet");
-        return;
-      }
-
-      const execCmd = (isNpmInstall ? `cd /app && ${trimmed}` : trimmed);
-      const cp = docker(["exec", "-i", bot, "sh", "-lc", execCmd]);
-      cp.stdout.on("data", d => emitChunkLines(bot, d));
-      cp.stderr.on("data", d => emitChunkLines(bot, d));
+      return;
     }
+
+    const entry = findServer(bot);
+    const isNpmInstall = /^npm\s+i(nstall)?(\s|$)/i.test(trimmed);
+
+    if (isNpmInstall && !await isContainerRunning(bot)) {
+      await runOfflineNpmInstall(bot, trimmed);
+      return;
+    }
+
+    if (isNpmInstall && isRemoteEntry(entry)) {
+      _emitLine(bot, "[ADPanel] npm install is not supported on remote nodes yet");
+      return;
+    }
+
+    const execCmd = (isNpmInstall ? `cd /app && ${trimmed}` : trimmed);
+    const cp = docker(["exec", "-i", bot, "sh", "-lc", execCmd]);
+    cp.stdout.on("data", d => emitChunkLines(bot, d));
+    cp.stderr.on("data", d => emitChunkLines(bot, d));
   });
 });
 

@@ -1,26 +1,32 @@
-const fs = require("fs");
+const express = require("express");
+const app = express();
 
-function getDockerRamLimit() {
-    const paths = [
-        "/sys/fs/cgroup/memory/memory.limit_in_bytes", // cgroup v1
-        "/sys/fs/cgroup/memory.max"                    // cgroup v2
-    ];
+app.get("/", (req, res) => {
+  res.send("Hello World from ADPanel!");
+});
 
-    for (const p of paths) {
-        if (fs.existsSync(p)) {
-            const raw = fs.readFileSync(p, "utf8").trim();
+const PORT = 3005;
 
-            // Unele sisteme pun "max" = fără limită
-            if (raw === "max") return "No limit";
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:3005`);
+});
 
-            const bytes = parseInt(raw);
-            return (bytes / 1024 / 1024 / 1024).toFixed(2) + " GB";
-        }
-    }
 
-    return "Cannot detect RAM limit";
-}
 
-console.log("Max RAM allowed:", getDockerRamLimit());
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
