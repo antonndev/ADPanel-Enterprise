@@ -285,14 +285,17 @@
         box-shadow:0 18px 40px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.04);
         overflow:hidden;
         position:relative;
+        scrollbar-width:none;
+        -ms-overflow-style:none;
       }
+      .code-shell::-webkit-scrollbar{width:0;height:0;}
       .line-gutter{
         flex:0 0 64px;
         width:64px;
         min-width:64px;
         background:#1a1d23;
         color:#7c8494;
-        padding:12px 18px 140px 12px;
+        padding:12px 18px 220px 12px;
         text-align:right;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size:15px;
@@ -306,7 +309,7 @@
         scrollbar-width:none;
         -ms-overflow-style:none;
       }
-      .line-gutter::-webkit-scrollbar{display:none;}
+      .line-gutter::-webkit-scrollbar{display:none;width:0;height:0;}
       .line-gutter div{ padding:4px 0; }
       .code-pane{
         position:relative;
@@ -318,12 +321,13 @@
         -ms-overflow-style:none;
         overscroll-behavior:contain;
       }
+      .code-pane::-webkit-scrollbar{width:0;height:0;}
       .code-overlay,
       .code-input{
         position:absolute;
         inset:0;
         margin:0;
-        padding:12px 18px 120px 20px;
+        padding:16px 22px 220px 24px;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size:14px;
         line-height:1.6;
@@ -331,7 +335,7 @@
         border:0;
         outline:none;
         background:transparent;
-        height:100%;
+        height:auto;
         min-height:100%;
         box-sizing:border-box;
       }
@@ -342,7 +346,7 @@
         margin:0;
         overflow:visible;
       }
-      .code-overlay::after{ content:""; display:block; height:72px; }
+      .code-overlay::after{ content:""; display:block; height:120px; }
       .code-overlay .line{ min-height:1.6em; }
       .code-input{
         z-index:2;
@@ -351,7 +355,6 @@
         resize:none;
         overflow:visible;
       }
-      .code-pane::-webkit-scrollbar{display:none;}
       .code-spacer{
         position:relative;
         width:100%;
@@ -3182,6 +3185,11 @@ async function changeVersion(version, opts = {}) {
         alert('Uploads completed');
       }
 
+      function normalizeInput(raw){
+        if(typeof raw !== 'string') return '';
+        return raw.replace(/\r\n?/g, '\n');
+      }
+
       function openEditorModal(path, content){
         currentEditorPath = path;
         editorModal.classList.add('show'); editorModal.style.display='flex'; document.getElementById('editorPath').textContent=path;
@@ -3199,9 +3207,10 @@ async function changeVersion(version, opts = {}) {
         if(rich){
           textArea.style.display='none';
           codeShell.style.display='flex';
-          codeInput.value = content;
-          codeInput.dataset.original = content;
-          renderHighlightedEditor(content);
+          const normalized = normalizeInput(content || '');
+          codeInput.value = normalized;
+          codeInput.dataset.original = normalized;
+          renderHighlightedEditor(normalized);
           codeInput.focus();
         }
         else {
@@ -3426,10 +3435,33 @@ async function changeVersion(version, opts = {}) {
         return lines.map(line => `<div class="line">${line || '&nbsp;'}</div>`).join('');
       }
 
+      function getLineHeightPx(){
+        const lh = codeInput ? parseFloat(getComputedStyle(codeInput).lineHeight) : NaN;
+        return Number.isFinite(lh) ? lh : 22;
+      }
+
+      function measureContentHeight(raw){
+        const normalized = normalizeInput(raw || '');
+        const lineCount = Math.max(1, normalized.split('\n').length);
+        const lineHeight = getLineHeightPx();
+        const padding = 220;
+        const minShell = (codeShell ? codeShell.clientHeight : 0) + 40;
+        return Math.max(minShell, (lineCount * lineHeight) + padding);
+      }
+
       function renderHighlightedEditor(raw){
-        codeOverlay.innerHTML = highlightCode(raw, currentEditorPath || '');
-        syncLineNumbers(raw);
-        syncCodeSpacer();
+        const normalized = normalizeInput(raw || '');
+        if(codeInput && codeInput.value !== normalized){
+          const start = codeInput.selectionStart || 0;
+          const end = codeInput.selectionEnd || 0;
+          codeInput.value = normalized;
+          const clampPos = (pos)=> Math.max(0, Math.min(normalized.length, pos));
+          codeInput.selectionStart = clampPos(start);
+          codeInput.selectionEnd = clampPos(end);
+        }
+        codeOverlay.innerHTML = highlightCode(normalized, currentEditorPath || '');
+        syncLineNumbers(normalized);
+        syncCodeSpacer(normalized);
         syncScrollPositions();
       }
 
@@ -3438,13 +3470,11 @@ async function changeVersion(version, opts = {}) {
         lineGutter.innerHTML = Array.from({length:count}, (_,i)=>`<div>${i+1}</div>`).join('');
       }
 
-      function syncCodeSpacer(){
+      function syncCodeSpacer(raw){
         if(!codeSpacer) return;
         const overlayHeight = codeOverlay ? codeOverlay.scrollHeight : 0;
-        const inputHeight = codeInput ? codeInput.scrollHeight : 0;
-        const base = codeShell ? codeShell.clientHeight : 0;
-        const buffer = 72;
-        const maxH = Math.max(base, overlayHeight, inputHeight) + buffer;
+        const measured = measureContentHeight(raw || (codeInput ? codeInput.value : ''));
+        const maxH = Math.max(overlayHeight, measured);
         codeSpacer.style.height = `${maxH}px`;
       }
 
