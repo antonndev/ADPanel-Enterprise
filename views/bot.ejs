@@ -275,7 +275,7 @@
       /* Code area – line numbers */
       :root{
         --code-pad-top:16px;
-        --code-pad-bottom:96px;
+        --code-pad-bottom:88px;
         --code-line-height:1.6;
         --code-font-size:14px;
       }
@@ -302,7 +302,7 @@
         min-width:64px;
         background:#1a1d23;
         color:#7c8494;
-        padding:var(--code-pad-top) 18px calc(var(--code-pad-bottom) - 8px) 12px;
+        padding:var(--code-pad-top) 18px var(--code-pad-bottom) 12px;
         text-align:right;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size:var(--code-font-size);
@@ -355,8 +355,8 @@
         margin:0;
         overflow:visible;
       }
-      .code-overlay::after{ content:""; display:block; height:40px; }
-      .code-overlay .line{ min-height:1.6em; }
+      .code-overlay::after{ content:""; display:block; height:0; }
+      .code-overlay .line{ min-height:calc(var(--code-line-height) * 1em); }
       .code-input{
         z-index:2;
         color:transparent;
@@ -3451,10 +3451,18 @@ async function changeVersion(version, opts = {}) {
 
       function getCodePadding(){
         const styleTarget = codeOverlay || codeInput;
-        if(!styleTarget) return { top:16, bottom:96 };
+        if(!styleTarget) return { top:16, bottom:88 };
         const cs = getComputedStyle(styleTarget);
         const top = parseFloat(cs.paddingTop) || 16;
-        const bottom = parseFloat(cs.paddingBottom) || 96;
+        const bottom = parseFloat(cs.paddingBottom) || 88;
+        return { top, bottom };
+      }
+
+      function getGutterPadding(){
+        if(!lineGutter) return { top:16, bottom:88 };
+        const cs = getComputedStyle(lineGutter);
+        const top = parseFloat(cs.paddingTop) || 16;
+        const bottom = parseFloat(cs.paddingBottom) || 88;
         return { top, bottom };
       }
 
@@ -3496,8 +3504,12 @@ async function changeVersion(version, opts = {}) {
         if (codeInput) codeInput.style.minHeight = `${measured}px`;
         if (codeOverlay) codeOverlay.style.minHeight = `${measured}px`;
         if (lineGutter){
-          lineGutter.style.height = '100%';
-          lineGutter.style.minHeight = '';
+          const lineCount = Math.max(1, (raw.match(/\n/g)||[]).length + 1);
+          const lineHeight = getLineHeightPx();
+          const { top: gutterTop, bottom: gutterBottom } = getGutterPadding();
+          const gutterHeight = (lineCount * lineHeight) + gutterTop + gutterBottom;
+          lineGutter.style.minHeight = `${gutterHeight}px`;
+          lineGutter.style.height = `${gutterHeight}px`;
         }
       }
 
