@@ -134,6 +134,57 @@
   align-items:center;
   gap:12px;
 }
+.file-toolbar-meta{ display:flex; flex-direction:column; gap:6px; }
+.select-all-control{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:rgba(96,165,250,0.08);
+  border:1px solid rgba(96,165,250,0.25);
+  padding:6px 10px;
+  border-radius:12px;
+  color:#dbeafe;
+  box-shadow:inset 0 0 0 1px rgba(96,165,250,0.15), 0 10px 30px rgba(0,0,0,0.35);
+  cursor:pointer;
+  user-select:none;
+  transition:background .12s ease, border-color .12s ease, transform .12s ease;
+  align-self:center;
+}
+.select-all-control:hover{ background:rgba(96,165,250,0.14); border-color:rgba(96,165,250,0.35); transform:translateY(-1px); }
+.select-all-control input{ display:none; }
+.select-all-checkbox{
+  width:18px;height:18px;border-radius:6px;
+  background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.18);
+  display:flex;align-items:center;justify-content:center;
+  color:#0b0f14; font-size:12px;
+  transition:all .12s ease;
+}
+.select-all-control input:checked + .select-all-checkbox{
+  background:linear-gradient(135deg,#38bdf8,#2563eb);
+  border-color:rgba(37,99,235,0.65);
+  color:#e0f2fe;
+  box-shadow:0 8px 18px rgba(37,99,235,0.35);
+}
+.select-all-label{ font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:#bfdbfe; }
+
+.bulk-delete{
+  display:none;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(248,113,113,0.25);
+  background:linear-gradient(135deg, rgba(239,68,68,0.14), rgba(185,28,28,0.18));
+  color:#fecaca;
+  border-radius:12px;
+  padding:10px 14px;
+  font-size:13px;
+  cursor:pointer;
+  box-shadow:0 12px 28px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(248,113,113,0.25);
+  transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.bulk-delete.show{ display:flex; }
+.bulk-delete:hover{ transform:translateY(-1px); border-color:rgba(248,113,113,0.45); box-shadow:0 18px 36px rgba(0,0,0,0.45); }
+.bulk-delete i{ color:#fecdd3; }
 .file-toolbar-icon{
   width:44px;
   height:44px;
@@ -155,6 +206,12 @@
 #breadcrumbs a{color:#60a5fa;text-decoration:none;}
 #breadcrumbs a:hover{text-decoration:underline;}
 .file-toolbar-actions{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  align-items:center;
+}
+.file-action-row{
   display:flex;
   gap:10px;
   align-items:center;
@@ -230,7 +287,7 @@
 }
 
 /* Modern file cards */
-.entry{
+.entry{ 
   display:grid;
   grid-template-columns:auto 1fr auto;
   align-items:center;
@@ -241,6 +298,16 @@
   border:1px solid rgba(255,255,255,0.05);
   box-shadow:0 15px 45px rgba(0,0,0,0.55);
   transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+}
+.entry.selected .entry-left{
+  animation: ios-tremble 0.14s ease-in-out infinite alternate;
+}
+.entry.selectable .entry-left{ cursor:pointer; }
+.entry.selectable .entry-left:active{ transform:scale(0.98); }
+
+@keyframes ios-tremble{
+  0% { transform: rotate(-1.2deg) translate3d(-0.5px,0,0); }
+  100% { transform: rotate(1.2deg) translate3d(0.5px,0,0); }
 }
 .entry:hover{
   background:rgba(12,17,25,0.98);
@@ -850,15 +917,26 @@ textarea{
             <div class="file-toolbar">
               <div class="file-toolbar-left">
                 <div class="file-toolbar-icon"><i class="fa-solid fa-folder-tree"></i></div>
-                <div>
+                <div class="file-toolbar-meta">
                   <div class="file-toolbar-title">Working directory</div>
                   <div id="breadcrumbs"></div>
                 </div>
               </div>
               <div class="file-toolbar-actions">
-                <label class="ghost-btn" id="uploadLabel" for="fileUploadModal" style="cursor:pointer"><i class="fa-solid fa-upload"></i> Upload</label>
-                <input id="fileUploadModal" type="file" />
-                <button class="ghost-btn" id="newBtn" onclick="createNew()" title="New file/folder"><i class="fa-solid fa-file-circle-plus"></i> New</button>
+                <div class="file-action-row">
+                  <label class="ghost-btn" id="uploadLabel" for="fileUploadModal" style="cursor:pointer"><i class="fa-solid fa-upload"></i> Upload</label>
+                  <input id="fileUploadModal" type="file" />
+                  <button class="ghost-btn" id="newBtn" onclick="createNew()" title="New file/folder"><i class="fa-solid fa-file-circle-plus"></i> New</button>
+                  <button class="bulk-delete" id="bulkDeleteBtn" title="Delete selected">
+                    <i class="fa-solid fa-trash"></i>
+                    <span>Delete</span>
+                  </button>
+                </div>
+                <label class="select-all-control" for="selectAllToggle">
+                  <input type="checkbox" id="selectAllToggle" />
+                  <span class="select-all-checkbox"><i class="fa-solid fa-check"></i></span>
+                  <span class="select-all-label">Select</span>
+                </label>
               </div>
             </div>
 
@@ -1230,6 +1308,8 @@ textarea{
       const fileUploadModal = document.getElementById("fileUploadModal");
       const uploadLabel = document.getElementById("uploadLabel");
       const newBtn = document.getElementById("newBtn");
+      const selectAllToggle = document.getElementById("selectAllToggle");
+      const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
 
       const taskModal = document.getElementById("taskModal");
       const taskModalClose = document.getElementById("taskModalClose");
@@ -1300,6 +1380,8 @@ textarea{
       const mrPluginInstallBtn = document.getElementById("mrPluginInstallBtn");
 
       let currentEditorPath = "";
+
+      let selectedEntries = new Set();
 
       let serverInfo = null;
       let SERVER_NODE_ID = null;
@@ -3096,6 +3178,44 @@ async function changeVersion(version, opts = {}) {
         }
       }
 
+      function clearSelection(){
+        selectedEntries.clear();
+        if (selectAllToggle) selectAllToggle.checked = false;
+        updateSelectionUI();
+      }
+
+      function updateSelectionUI(){
+        if (!entriesEl) return;
+        const entries = Array.from(entriesEl.querySelectorAll('.entry'));
+        entries.forEach(li => {
+          const rel = li.dataset.relPath || "";
+          const isSelected = selectedEntries.has(rel);
+          li.classList.toggle('selected', isSelected);
+          li.classList.toggle('selectable', entries.length > 0);
+        });
+        const allSelected = entries.length > 0 && entries.every(li => selectedEntries.has(li.dataset.relPath || ""));
+        if (selectAllToggle) selectAllToggle.checked = allSelected;
+        if (bulkDeleteBtn) bulkDeleteBtn.classList.toggle('show', selectedEntries.size > 0);
+      }
+
+      function toggleEntrySelection(li){
+        if (!li) return;
+        const rel = li.dataset.relPath;
+        if (!rel) return;
+        if (selectedEntries.has(rel)) selectedEntries.delete(rel); else selectedEntries.add(rel);
+        updateSelectionUI();
+      }
+
+      function selectAllEntries(){
+        if (!entriesEl) return;
+        selectedEntries.clear();
+        entriesEl.querySelectorAll('.entry').forEach(li => {
+          const rel = li.dataset.relPath;
+          if (rel) selectedEntries.add(rel);
+        });
+        updateSelectionUI();
+      }
+
       let currentPath = "";
       async function loadExplorer(path = ""){
         try{
@@ -3103,9 +3223,13 @@ async function changeVersion(version, opts = {}) {
           const data = await apiExplore(path);
           currentPath = data.path || "";
           breadcrumbs.innerHTML = `<a href="#" onclick="loadExplorer('')">Root</a>${currentPath ? " / " + currentPath : ""}`;
+          clearSelection();
           entriesEl.innerHTML = "";
           data.entries.forEach((e) => {
-            const li = document.createElement("li"); li.className = "entry";
+            const li = document.createElement("li"); li.className = "entry selectable";
+            const relPath = currentPath ? currentPath + "/" + e.name : e.name;
+            li.dataset.relPath = relPath;
+            li.dataset.isDir = e.isDir ? "true" : "false";
             const left = document.createElement("div"); left.className = "entry-left";
             const icon = document.createElement("div"); icon.className = `entry-icon ${e.isDir ? 'folder' : 'file'}`; icon.innerHTML = e.isDir ? '<i class="fa-solid fa-folder"></i>' : '<i class="fa-solid fa-file"></i>';
             const nameWrap = document.createElement("div");
@@ -3113,6 +3237,33 @@ async function changeVersion(version, opts = {}) {
             const meta = document.createElement("div"); meta.className = "entry-meta"; meta.textContent = e.isDir ? "Folder" : "File";
             nameWrap.appendChild(nm); nameWrap.appendChild(meta);
             left.appendChild(icon); left.appendChild(nameWrap);
+            let longPressTimeout = null;
+            let longPressTriggered = false;
+            left.addEventListener('mousedown', (ev) => {
+              if (ev.button !== 0) return;
+              longPressTriggered = false;
+              if (longPressTimeout) clearTimeout(longPressTimeout);
+              longPressTimeout = setTimeout(() => {
+                longPressTriggered = true;
+                clearSelection();
+                const rel = li.dataset.relPath;
+                if (rel) selectedEntries.add(rel);
+                updateSelectionUI();
+              }, 2000);
+            });
+            ['mouseup','mouseleave','mouseout'].forEach(evt => {
+              left.addEventListener(evt, () => {
+                if (longPressTimeout) {
+                  clearTimeout(longPressTimeout);
+                  longPressTimeout = null;
+                }
+              });
+            });
+            left.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              if (longPressTriggered) { longPressTriggered = false; return; }
+              toggleEntrySelection(li);
+            });
             const actions = document.createElement("div"); actions.className = "entry-actions";
             const moreBtn = document.createElement("button"); moreBtn.className = "more-btn"; moreBtn.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
             const menu = document.createElement("div"); menu.className = "more-menu";
@@ -3171,7 +3322,7 @@ async function changeVersion(version, opts = {}) {
               if (e.isDir) {
                 loadExplorer(currentPath ? currentPath + "/" + e.name : e.name);
               } else if (hasPerm('files_read')) {
-                const rel = currentPath ? currentPath + "/" + e.name : e.name;
+                const rel = relPath;
                 if (REMOTE_MODE) {
                   try{
                     const content = await apiReadFile(rel);
@@ -3186,6 +3337,7 @@ async function changeVersion(version, opts = {}) {
             const right = document.createElement("div"); right.className = "entry-right"; right.appendChild(actions); right.appendChild(arrow);
             li.appendChild(left); li.appendChild(right); entriesEl.appendChild(li);
           });
+          updateSelectionUI();
           const scripts = data.entries.filter(e => !e.isDir).map(e => e.name);
           scriptSelect.innerHTML = scripts.map(s => `<option value="${s}">${s}</option>`).join("");
           taskStartupSelect.innerHTML = `<option value="">(none)</option>` + scripts.map(s => `<option value="${s}">${s}</option>`).join("");
@@ -3193,6 +3345,36 @@ async function changeVersion(version, opts = {}) {
         }catch(err){
           entriesEl.innerHTML = `<li style="color:var(--muted)">${hasPerm('files_read') ? 'Failed to load' : 'Unauthorized'}</li>`;
         }
+      }
+
+      if (selectAllToggle) {
+        selectAllToggle.addEventListener('change', (ev) => {
+          if (ev.target.checked) selectAllEntries(); else clearSelection();
+        });
+      }
+
+      if (bulkDeleteBtn) {
+        bulkDeleteBtn.addEventListener('click', async () => {
+          if (selectedEntries.size === 0) return;
+          if (!confirm(`Delete ${selectedEntries.size} selected item(s)?`)) return;
+          const toDelete = Array.from(entriesEl.querySelectorAll('.entry')).filter(li => selectedEntries.has(li.dataset.relPath));
+          try{
+            showProgressWheel(4, "Deleting...");
+            for (const li of toDelete){
+              const rel = li.dataset.relPath;
+              const isDir = li.dataset.isDir === 'true';
+              if (!rel) continue;
+              await apiDelete(rel, isDir);
+            }
+            setProgress(100, "Delete complete");
+            setTimeout(()=> hideProgressWheel(), 300);
+            loadExplorer(currentPath);
+          }catch(err){
+            alert('Delete failed: ' + (err && err.message ? err.message : err));
+          } finally {
+            clearSelection();
+          }
+        });
       }
 
       let currentProgress=0, simInterval=null, isActiveOperation=false, operationStart=null;
