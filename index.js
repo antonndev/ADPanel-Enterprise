@@ -4037,10 +4037,19 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
       switch (cmd) {
         case "run": {
           const entry = findServer(bot);
+          if (!entry) {
+            _emitLine(bot, "[ADPanel] server not found in servers.json");
+            break;
+          }
+
           const resolvedTemplate = resolveTemplateForBot(bot);
           const resolvedMeta = resolvedTemplate?.meta || {};
-          const effectiveTemplateId = templateId || entry?.template || resolvedTemplate?.template || null;
-          const normalizedTemplateId = normalizeTemplateId(effectiveTemplateId);
+
+          // Always rely on the persisted servers.json template first to avoid
+          // stale/incorrect template data coming from the client payload.
+          const persistedTemplateId = entry?.template || null;
+          const fallbackTemplateId = resolvedTemplate?.template || templateId || null;
+          const normalizedTemplateId = normalizeTemplateId(persistedTemplateId || fallbackTemplateId);
           let resolvedTemplateDef = normalizedTemplateId ? findTemplateById(normalizedTemplateId) : null;
           const runtimeTemplate = buildTemplateFromRuntime(normalizedTemplateId, entry?.runtime);
 
