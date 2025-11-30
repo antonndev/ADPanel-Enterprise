@@ -2774,11 +2774,26 @@ function writeTemplateMeta(botDir, templateId, startFile){
 
 function providerTemplates(provider){
   if (!provider) return [];
+  const base = [];
+
   if (provider.templates && Array.isArray(provider.templates)) {
-    return provider.templates.map(normalizeTemplateId);
+    base.push(...provider.templates.map(normalizeTemplateId));
+  } else if (provider.template) {
+    base.push(normalizeTemplateId(provider.template));
+  } else {
+    base.push('minecraft');
   }
-  if (provider.template) return [normalizeTemplateId(provider.template)];
-  return ['minecraft'];
+
+  // Providers declared for the generic discord-bot template should also serve
+  // its concrete aliases (nodejs/python) so they stay visible after template
+  // switches that persist the canonical IDs in servers.json.
+  if (base.includes('discord-bot')) {
+    ['nodejs', 'python'].forEach(alias => {
+      if (!base.includes(alias)) base.push(alias);
+    });
+  }
+
+  return base;
 }
 
 function providerSupportsTemplate(provider, tpl){

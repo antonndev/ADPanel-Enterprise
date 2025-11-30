@@ -139,7 +139,7 @@
     },
     {
       "id": "nodejs",
-      "template": "discord-bot",
+      "templates": ["nodejs", "discord-bot"],
       "name": "Node.js",
       "description": "Official Node.js images for Discord bots.",
       "logo": "https://nodejs.org/static/images/logo.svg",
@@ -175,7 +175,7 @@
     },
     {
       "id": "python",
-      "template": "discord-bot",
+      "templates": ["python", "discord-bot"],
       "name": "Python",
       "description": "With this you can run any project based on Python.",
       "logo": "https://files.catbox.moe/gqnc4x.png",
