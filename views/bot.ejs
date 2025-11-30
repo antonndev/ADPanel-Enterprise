@@ -317,6 +317,7 @@
         overflow-y:auto;
         overflow-x:hidden;
         overscroll-behavior:contain;
+        height:100%;
       }
       .line-gutter::-webkit-scrollbar{display:none;width:0;height:0;}
       .line-gutter div{ padding:0; height:calc(var(--code-line-height) * 1em); }
@@ -3503,14 +3504,6 @@ async function changeVersion(version, opts = {}) {
         codeSpacer.style.height = `${measured}px`;
         if (codeInput) codeInput.style.minHeight = `${measured}px`;
         if (codeOverlay) codeOverlay.style.minHeight = `${measured}px`;
-        if (lineGutter){
-          const lineCount = Math.max(1, (raw.match(/\n/g)||[]).length + 1);
-          const lineHeight = getLineHeightPx();
-          const { top: gutterTop, bottom: gutterBottom } = getGutterPadding();
-          const gutterHeight = (lineCount * lineHeight) + gutterTop + gutterBottom;
-          lineGutter.style.minHeight = `${gutterHeight}px`;
-          lineGutter.style.height = `${gutterHeight}px`;
-        }
       }
 
       function syncScrollPositions(){
