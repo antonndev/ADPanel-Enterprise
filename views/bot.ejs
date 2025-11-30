@@ -3481,7 +3481,10 @@ async function changeVersion(version, opts = {}) {
         codeSpacer.style.height = `${measured}px`;
         if (codeInput) codeInput.style.minHeight = `${measured}px`;
         if (codeOverlay) codeOverlay.style.minHeight = `${measured}px`;
-        if (lineGutter) lineGutter.style.minHeight = `${measured}px`;
+        if (lineGutter){
+          lineGutter.style.height = '100%';
+          lineGutter.style.minHeight = '';
+        }
       }
 
       function syncScrollPositions(){
