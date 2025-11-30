@@ -1514,7 +1514,7 @@ function renderServers(list){
     }
 
     const templateNameMap = new Map();
-    const templatePickerState = { selected: '', server: '' };
+    const templatePickerState = { selected: '', selectedNorm: '', server: '' };
 
     function normalizeTemplateIdClient(tpl){
       const raw = (tpl || '').toString().trim().toLowerCase();
@@ -1714,6 +1714,7 @@ function renderServers(list){
       if(serverTemplateOverlay) serverTemplateOverlay.classList.remove('show');
       if(serverTemplateModal) serverTemplateModal.classList.remove('show');
       templatePickerState.selected = '';
+      templatePickerState.selectedNorm = '';
       templatePickerState.server = '';
       if(serverTemplateModal){
         serverTemplateModal.dataset.server = '';
@@ -1726,8 +1727,9 @@ function renderServers(list){
     function selectServerTemplate(id){
       const normalized = normalizeTemplateIdClient(id);
       if(!normalized) return;
-      templatePickerState.selected = normalized;
-      if(serverTemplateModal) serverTemplateModal.dataset.selected = normalized;
+      templatePickerState.selected = id;
+      templatePickerState.selectedNorm = normalized;
+      if(serverTemplateModal) serverTemplateModal.dataset.selected = id;
       Array.from(serverTemplateList.querySelectorAll('.template-option')).forEach(card => {
         const normCard = normalizeTemplateIdClient(card.dataset.id);
         card.classList.toggle('active', normCard === normalized);
@@ -1742,7 +1744,8 @@ function renderServers(list){
         const norm = normalizeTemplateIdClient(tpl?.id);
         if(!norm || seen.has(norm)) return;
         seen.add(norm);
-        unique.push({ ...tpl, _norm: norm });
+        const canonicalId = tpl?.id || norm;
+        unique.push({ ...tpl, _norm: norm, _id: canonicalId });
       });
 
       if(unique.length === 0){
@@ -1754,7 +1757,7 @@ function renderServers(list){
       unique.forEach(tpl => {
         const card = document.createElement('div');
         card.className = 'template-option';
-        card.dataset.id = tpl.id || tpl._norm;
+        card.dataset.id = tpl._id;
         card.innerHTML = `
           <div class="title"><i class="fa-solid fa-layer-group"></i> ${escapeHtml(tpl.name || tpl.id)}</div>
           <div class="desc">${escapeHtml(tpl.description || 'No description')}</div>
@@ -1762,23 +1765,25 @@ function renderServers(list){
         `;
         if(tpl._norm === normalizeTemplateIdClient(currentTemplate || templatePickerState.selected)){
           card.classList.add('active');
-          templatePickerState.selected = tpl._norm;
-          if(serverTemplateModal) serverTemplateModal.dataset.selected = tpl._norm;
+          templatePickerState.selected = tpl._id;
+          templatePickerState.selectedNorm = tpl._norm;
+          if(serverTemplateModal) serverTemplateModal.dataset.selected = tpl._id;
         }
         serverTemplateList.appendChild(card);
       });
 
       if(!templatePickerState.selected && unique[0]){
-        selectServerTemplate(unique[0]._norm);
+        selectServerTemplate(unique[0]._id);
       }
     }
 
     async function openServerTemplateModal(serverName, currentTemplate){
       if(!serverTemplateOverlay || !serverTemplateModal) return;
       templatePickerState.server = serverName;
-      templatePickerState.selected = normalizeTemplateIdClient(currentTemplate);
+      templatePickerState.selected = currentTemplate;
+      templatePickerState.selectedNorm = normalizeTemplateIdClient(currentTemplate);
       serverTemplateModal.dataset.server = serverName;
-      serverTemplateModal.dataset.selected = templatePickerState.selected;
+      serverTemplateModal.dataset.selected = templatePickerState.selected || '';
       serverTemplateTitle.textContent = `Change template for ${serverName}`;
       serverTemplateSubtitle.textContent = currentTemplate
         ? `Current template: ${displayTemplateName(currentTemplate)}`

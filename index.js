@@ -1375,7 +1375,7 @@ app.get("/api/settings/servers", (req, res) => {
     return res.status(500).json({ error: "failed to read servers" });
   }
 });
-app.post("/api/settings/servers/:name/template", (req, res) => {
+app.post("/api/settings/servers/:name/template", async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
 
   let nameParam = req.params.name || "";
@@ -1388,16 +1388,12 @@ app.post("/api/settings/servers/:name/template", (req, res) => {
   const templateId = normalizeTemplateId(rawTemplate);
   if (!templateId) return res.status(400).json({ error: "invalid template id" });
 
-  const knownTemplates = loadTemplatesFile();
-  const availableIds = new Set(knownTemplates.map(t => normalizeTemplateId(t?.id)));
-  availableIds.add("minecraft");
-  availableIds.add("discord-bot");
-  availableIds.add("nodejs");
-  availableIds.add("python");
-  availableIds.add("vanilla");
-  if (!availableIds.has(templateId)) {
+  const template = findTemplateById(templateId);
+  if (!template) {
     return res.status(404).json({ error: "template not found" });
   }
+
+  const canonicalTemplateId = String(template.id || templateId);
 
   const list = loadServersIndex();
   const idx = list.findIndex(e => e && e.name === name);
@@ -1407,14 +1403,56 @@ app.post("/api/settings/servers/:name/template", (req, res) => {
     return res.status(404).json({ error: "server not found" });
   }
 
-  const updatedEntry = Object.assign({}, current || { name, nodeId: null }, { template: templateId });
+  const updatedEntry = Object.assign({}, current || { name, nodeId: null }, { template: canonicalTemplateId });
   if (idx >= 0) list[idx] = updatedEntry; else list.push(updatedEntry);
 
   if (!saveServersIndex(list)) {
     return res.status(500).json({ error: "failed to save servers" });
   }
 
-  return res.json({ ok: true, server: updatedEntry });
+  const isRemote = !!(updatedEntry.nodeId && updatedEntry.nodeId !== "local");
+  if (!isRemote) {
+    try {
+      const botDir = safeResolve(name);
+      const normalized = normalizeTemplateId(canonicalTemplateId);
+      await ensureNoContainer(name);
+
+      if (normalized === "minecraft") {
+        const hostPort = clampPort(updatedEntry.port != null ? updatedEntry.port : 25565);
+        try { await pullImage("itzg/minecraft-server:latest"); } catch {}
+        setMinecraftServerPort(botDir, hostPort);
+        const extraEnv = {
+          TYPE: "CUSTOM",
+          CUSTOM_SERVER: "/data/server.jar",
+          ENABLE_RCON: "false",
+          CREATE_CONSOLE_IN_PIPE: "true",
+          UID: String(typeof process.getuid === "function" ? process.getuid() : 1000),
+          GID: String(typeof process.getgid === "function" ? process.getgid() : 1000),
+          SERVER_PORT: String(hostPort)
+        };
+        const overrideDocker = { ports: [`${hostPort}:25565`] };
+        runTemplateContainerNow(name, canonicalTemplateId, botDir, extraEnv, overrideDocker);
+      } else if (normalized === "discord-bot" || normalized === "nodejs") {
+        const hostPort = clampAppPort(updatedEntry.port, 3001);
+        try { await pullImage("node:20-alpine"); } catch {}
+        const overrideDocker = { ports: [`${hostPort}:${hostPort}`] };
+        runTemplateContainerNow(name, normalized === "nodejs" ? "nodejs" : "discord-bot", botDir, {}, overrideDocker);
+      } else {
+        const hostPort = clampPort(updatedEntry.port);
+        const tplImage = template?.docker?.image;
+        const tplTag = template?.docker?.tag || "latest";
+        if (tplImage) {
+          try { await pullImage(`${tplImage}:${tplTag}`); } catch {}
+        }
+        const overrideDocker = hostPort ? { ports: [`${hostPort}:${hostPort}`] } : {};
+        runTemplateContainerNow(name, canonicalTemplateId, botDir, {}, overrideDocker);
+      }
+    } catch (e) {
+      console.warn("[template-change] failed to recreate container:", e && e.message);
+    }
+  }
+
+  return res.json({ ok: true, server: Object.assign({}, updatedEntry, { template: canonicalTemplateId }) });
 });
 app.delete("/api/settings/servers/:name", async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
