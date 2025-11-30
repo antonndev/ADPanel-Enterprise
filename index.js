@@ -1353,15 +1353,18 @@ app.get("/api/settings/servers", (req, res) => {
     const byName = new Map();
 
     // Locale (fallback: local)
-    local.forEach(n => byName.set(n, { name: n, isLocal: true, nodeId: null }));
+    local.forEach(n => byName.set(n, { name: n, isLocal: true, nodeId: null, template: null }));
 
     // Index (poate să override-uiască “isLocal”)
     (index || []).forEach(e => {
       if (!e || !e.name) return;
+      const prev = byName.get(e.name) || {};
       byName.set(e.name, {
+        ...prev,
         name: e.name,
         isLocal: !(e.nodeId && e.nodeId !== "local"),
-        nodeId: e.nodeId || null
+        nodeId: e.nodeId || null,
+        template: e.template || prev.template || null
       });
     });
 
@@ -1371,6 +1374,47 @@ app.get("/api/settings/servers", (req, res) => {
     console.error("Failed to list servers:", e);
     return res.status(500).json({ error: "failed to read servers" });
   }
+});
+app.post("/api/settings/servers/:name/template", (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
+
+  let nameParam = req.params.name || "";
+  try { nameParam = decodeURIComponent(nameParam); } catch {}
+  const name = String(nameParam).trim();
+  if (!name) return res.status(400).json({ error: "missing name" });
+  if (name.includes("..") || /[\/\\]/.test(name)) return res.status(400).json({ error: "invalid name" });
+
+  const rawTemplate = (req.body && (req.body.templateId || req.body.template)) || "";
+  const templateId = normalizeTemplateId(rawTemplate);
+  if (!templateId) return res.status(400).json({ error: "invalid template id" });
+
+  const knownTemplates = loadTemplatesFile();
+  const availableIds = new Set(knownTemplates.map(t => normalizeTemplateId(t?.id)));
+  availableIds.add("minecraft");
+  availableIds.add("discord-bot");
+  availableIds.add("nodejs");
+  availableIds.add("python");
+  availableIds.add("vanilla");
+  if (!availableIds.has(templateId)) {
+    return res.status(404).json({ error: "template not found" });
+  }
+
+  const list = loadServersIndex();
+  const idx = list.findIndex(e => e && e.name === name);
+  const current = idx >= 0 ? list[idx] : null;
+  const existsLocally = fs.existsSync(path.join(BOTS_DIR, name));
+  if (!current && !existsLocally) {
+    return res.status(404).json({ error: "server not found" });
+  }
+
+  const updatedEntry = Object.assign({}, current || { name, nodeId: null }, { template: templateId });
+  if (idx >= 0) list[idx] = updatedEntry; else list.push(updatedEntry);
+
+  if (!saveServersIndex(list)) {
+    return res.status(500).json({ error: "failed to save servers" });
+  }
+
+  return res.json({ ok: true, server: updatedEntry });
 });
 app.delete("/api/settings/servers/:name", async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
