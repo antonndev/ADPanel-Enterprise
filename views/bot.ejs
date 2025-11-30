@@ -1251,6 +1251,24 @@
       const mrPluginInstallBtn = document.getElementById("mrPluginInstallBtn");
 
       let currentEditorPath = "";
+      const virtualEditor = {
+        allLines: [],
+        originalLines: [],
+        visibleStart: 0,
+        visibleEnd: 0,
+        renderWindow: 180,
+        buffer: 50,
+        chunkLines: 180,
+        chunkDelayMs: 10,
+        lineHeight: 22,
+        paddingTop: 16,
+        paddingBottom: 88,
+        gutterPaddingTop: 16,
+        gutterPaddingBottom: 88,
+        streamingAbort: null,
+        isStreaming: false,
+        pendingRemainder: "",
+      };
 
       let serverInfo = null;
       let SERVER_NODE_ID = null;
@@ -3125,8 +3143,7 @@ async function changeVersion(version, opts = {}) {
                 const rel = currentPath ? currentPath + "/" + e.name : e.name;
                 if (REMOTE_MODE) {
                   try{
-                    const content = await apiReadFile(rel);
-                    if (content !== null) openEditorModal(rel, content);
+                    openEditorModal(rel, '', { streamLoader: ()=> streamFileIntoEditor(rel) });
                   } catch(err){ alert('Open failed: ' + (err.message || err)); }
                 } else {
                   socket.emit("readFile", { bot, path: rel });
@@ -3200,7 +3217,166 @@ async function changeVersion(version, opts = {}) {
         return raw.replace(/\r\n?/g, '\n');
       }
 
-      function openEditorModal(path, content){
+      function refreshVirtualMetrics(){
+        virtualEditor.lineHeight = getLineHeightPx();
+        const { top: codeTop, bottom: codeBottom } = getCodePadding();
+        const { top: gutTop, bottom: gutBottom } = getGutterPadding();
+        virtualEditor.paddingTop = codeTop;
+        virtualEditor.paddingBottom = codeBottom;
+        virtualEditor.gutterPaddingTop = gutTop;
+        virtualEditor.gutterPaddingBottom = gutBottom;
+      }
+
+      function resetVirtualEditorState(){
+        refreshVirtualMetrics();
+        virtualEditor.allLines = [];
+        virtualEditor.originalLines = [];
+        virtualEditor.visibleStart = 0;
+        virtualEditor.visibleEnd = 0;
+        virtualEditor.pendingRemainder = "";
+        virtualEditor.isStreaming = false;
+        if (virtualEditor.streamingAbort){
+          try{ virtualEditor.streamingAbort.abort(); }catch{}
+        }
+        virtualEditor.streamingAbort = null;
+        if (codeOverlay){ codeOverlay.innerHTML=''; codeOverlay.style.transform='translateY(0px)'; }
+        if (codeInput){ codeInput.value=''; codeInput.style.transform='translateY(0px)'; }
+        if (lineGutter){ lineGutter.innerHTML=''; lineGutter.style.transform='translateY(0px)'; }
+        updateVirtualSpacer();
+        renderVirtualSlice(true);
+      }
+
+      function updateVirtualSpacer(){
+        if (!codeSpacer) return;
+        refreshVirtualMetrics();
+        const totalLines = Math.max(1, virtualEditor.allLines.length);
+        const totalHeight = (totalLines * virtualEditor.lineHeight) + virtualEditor.paddingTop + virtualEditor.paddingBottom;
+        codeSpacer.style.height = `${totalHeight}px`;
+      }
+
+      function setVirtualContent(raw){
+        const normalized = normalizeInput(raw || '');
+        virtualEditor.allLines = normalized.split('\n');
+        virtualEditor.visibleStart = 0;
+        virtualEditor.visibleEnd = 0;
+        updateVirtualSpacer();
+        renderVirtualSlice(true);
+      }
+
+      function computeVisibleWindow(){
+        if (!codePane) return { start: 0, end: 0 };
+        const scrollTop = codePane.scrollTop || 0;
+        const lh = virtualEditor.lineHeight || 22;
+        const viewHeight = codePane.clientHeight || 0;
+        const fromTop = Math.max(0, scrollTop - virtualEditor.paddingTop);
+        const approxStart = Math.max(0, Math.floor(fromTop / lh) - virtualEditor.buffer);
+        const maxLines = Math.max(virtualEditor.renderWindow, Math.ceil((viewHeight / lh) + (virtualEditor.buffer * 2)));
+        const total = Math.max(1, virtualEditor.allLines.length);
+        const approxEnd = Math.min(total, approxStart + maxLines);
+        return { start: approxStart, end: approxEnd };
+      }
+
+      function renderVirtualSlice(force=false){
+        if (!codePane || !codeOverlay || !lineGutter || !codeInput) return;
+        refreshVirtualMetrics();
+        const range = computeVisibleWindow();
+        if (!force && range.start === virtualEditor.visibleStart && range.end === virtualEditor.visibleEnd) return;
+        const source = virtualEditor.allLines.length ? virtualEditor.allLines : [''];
+        const slice = source.slice(range.start, range.end);
+        if (!slice.length) slice.push('');
+        const highlighted = highlightCode(slice.join('\n'), currentEditorPath || '');
+        const offset = virtualEditor.paddingTop + (range.start * virtualEditor.lineHeight);
+        const gutterOffset = virtualEditor.gutterPaddingTop + (range.start * virtualEditor.lineHeight);
+        codeOverlay.innerHTML = highlighted;
+        codeOverlay.style.transform = `translateY(${offset}px)`;
+        codeInput.value = slice.join('\n');
+        codeInput.style.transform = `translateY(${offset}px)`;
+        codeInput.dataset.offsetStart = String(range.start);
+        lineGutter.innerHTML = slice.map((_,i)=>`<div>${range.start + i + 1}</div>`).join('');
+        lineGutter.style.transform = `translateY(${gutterOffset}px)`;
+        virtualEditor.visibleStart = range.start;
+        virtualEditor.visibleEnd = range.start + slice.length;
+        syncScrollPositions();
+      }
+
+      function applyInputToAllLines(){
+        const start = Number(codeInput.dataset.offsetStart || 0);
+        const before = Math.max(0, start);
+        const sliceLines = normalizeInput(codeInput.value || '').split('\n');
+        const replaceCount = Math.max(0, virtualEditor.visibleEnd - virtualEditor.visibleStart);
+        virtualEditor.allLines.splice(before, replaceCount, ...sliceLines);
+        virtualEditor.visibleEnd = before + sliceLines.length;
+        updateVirtualSpacer();
+        renderVirtualSlice(true);
+      }
+
+      function getEditorContent(){
+        if (codeShell && codeShell.style.display !== 'none'){ return virtualEditor.allLines.join('\n'); }
+        return textArea ? textArea.value : '';
+      }
+
+      function storeOriginalLines(){
+        virtualEditor.originalLines = virtualEditor.allLines.slice();
+        if (textArea) textArea.dataset.original = textArea.value;
+        if (codeInput) codeInput.dataset.original = '';
+      }
+
+      async function streamFileIntoEditor(relPath){
+        const target = REMOTE_MODE
+          ? `${NODE_API_BASE}/file?path=${encodeURIComponent(relPath)}&stream=1`
+          : `/api/servers/${encodeURIComponent(bot)}/file?path=${encodeURIComponent(relPath)}&stream=1`;
+        const controller = new AbortController();
+        virtualEditor.streamingAbort = controller;
+        virtualEditor.isStreaming = true;
+        virtualEditor.pendingRemainder = '';
+        updateVirtualSpacer();
+        renderVirtualSlice(true);
+        try{
+          const res = await fetch(target, { signal: controller.signal });
+          if(!res.ok) throw new Error('read file failed');
+          if(!res.body || typeof res.body.getReader !== 'function'){
+            const text = await res.text();
+            setVirtualContent(text);
+            storeOriginalLines();
+            virtualEditor.isStreaming = false;
+            return;
+          }
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffered = '';
+          while(true){
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffered += decoder.decode(value, { stream:true });
+            const lines = buffered.split('\n');
+            buffered = lines.pop() || '';
+            if (lines.length){
+              await appendVirtualLines(lines);
+            }
+          }
+          if(buffered){ await appendVirtualLines([buffered]); }
+          storeOriginalLines();
+        }catch(err){
+          if (controller.signal.aborted) return;
+          alert('Open failed: ' + (err.message || err));
+        }finally{
+          virtualEditor.isStreaming = false;
+        }
+      }
+
+      async function appendVirtualLines(lines){
+        let remaining = lines.slice();
+        while(remaining.length){
+          const chunk = remaining.splice(0, virtualEditor.chunkLines);
+          virtualEditor.allLines.push(...chunk);
+          updateVirtualSpacer();
+          renderVirtualSlice(false);
+          const jitter = Math.max(5, Math.min(15, virtualEditor.chunkDelayMs + (Math.random()*6 - 3)));
+          await new Promise(r=>setTimeout(r, jitter));
+        }
+      }
+
+      function openEditorModal(path, content, opts={}){
         currentEditorPath = path;
         editorModal.classList.add('show'); editorModal.style.display='flex'; document.getElementById('editorPath').textContent=path;
         const lower=path.toLowerCase();
@@ -3217,10 +3393,15 @@ async function changeVersion(version, opts = {}) {
         if(rich){
           textArea.style.display='none';
           codeShell.style.display='flex';
-          const normalized = normalizeInput(content || '');
-          codeInput.value = normalized;
-          codeInput.dataset.original = normalized;
-          renderHighlightedEditor(normalized);
+          resetVirtualEditorState();
+          if (opts && typeof opts.streamLoader === 'function') {
+            opts.streamLoader();
+          } else {
+            const normalized = normalizeInput(content || '');
+            setVirtualContent(normalized);
+            virtualEditor.originalLines = virtualEditor.allLines.slice();
+            renderVirtualSlice(true);
+          }
           codeInput.focus();
         }
         else {
@@ -3242,21 +3423,28 @@ async function changeVersion(version, opts = {}) {
         textArea.value='';
         lineGutter.innerHTML='';
         currentEditorPath="";
+        if (virtualEditor.streamingAbort){
+          try{ virtualEditor.streamingAbort.abort(); } catch{}
+        }
+        resetVirtualEditorState();
       }
       editorModalClose.addEventListener('click', closeEditorModal);
       editorDiscard.addEventListener('click', () => {
         if (textArea.style.display!=='none'){
           textArea.value = textArea.dataset.original || '';
         } else {
-          const original = codeInput.dataset.original || '';
-          codeInput.value = original;
-          renderHighlightedEditor(original);
+          const original = (virtualEditor.originalLines && virtualEditor.originalLines.length)
+            ? virtualEditor.originalLines.join('\n')
+            : (codeInput.dataset.original || '');
+          setVirtualContent(original);
+          virtualEditor.originalLines = virtualEditor.allLines.slice();
+          renderVirtualSlice(true);
         }
       });
       async function performSave(){
         if (!hasPerm('files_create')) return alert('Unauthorized');
         const path = document.getElementById('editorPath').textContent; if(!path) return alert('No file open');
-        let contentToSave = (textArea.style.display!=='none') ? textArea.value : codeInput.value;
+        let contentToSave = getEditorContent();
         try{
           await apiWriteFile(path, contentToSave);
           setTimeout(()=> { loadExplorer(currentPath); alert('Saved'); closeEditorModal(); }, 150);
@@ -3478,19 +3666,8 @@ async function changeVersion(version, opts = {}) {
       }
 
       function renderHighlightedEditor(raw){
-        const normalized = normalizeInput(raw || '');
-        if(codeInput && codeInput.value !== normalized){
-          const start = codeInput.selectionStart || 0;
-          const end = codeInput.selectionEnd || 0;
-          codeInput.value = normalized;
-          const clampPos = (pos)=> Math.max(0, Math.min(normalized.length, pos));
-          codeInput.selectionStart = clampPos(start);
-          codeInput.selectionEnd = clampPos(end);
-        }
-        codeOverlay.innerHTML = highlightCode(normalized, currentEditorPath || '');
-        syncLineNumbers(normalized);
-        syncCodeSpacer(normalized);
-        syncScrollPositions();
+        setVirtualContent(raw || '');
+        renderVirtualSlice(true);
       }
 
       function syncLineNumbers(raw){
@@ -3499,11 +3676,7 @@ async function changeVersion(version, opts = {}) {
       }
 
       function syncCodeSpacer(raw){
-        if(!codeSpacer) return;
-        const measured = measureContentHeight(raw || (codeInput ? codeInput.value : ''));
-        codeSpacer.style.height = `${measured}px`;
-        if (codeInput) codeInput.style.minHeight = `${measured}px`;
-        if (codeOverlay) codeOverlay.style.minHeight = `${measured}px`;
+        updateVirtualSpacer();
       }
 
       function syncScrollPositions(){
@@ -3513,7 +3686,7 @@ async function changeVersion(version, opts = {}) {
 
       if (codeInput){
         codeInput.addEventListener('input', ()=>{
-          renderHighlightedEditor(codeInput.value);
+          applyInputToAllLines();
         });
         codeInput.addEventListener('keydown', (e)=>{
           if(e.key === 'Tab'){
@@ -3523,13 +3696,16 @@ async function changeVersion(version, opts = {}) {
             const val = codeInput.value;
             codeInput.value = `${val.slice(0,start)}  ${val.slice(end)}`;
             codeInput.selectionStart = codeInput.selectionEnd = start + 2;
-            renderHighlightedEditor(codeInput.value);
+            applyInputToAllLines();
           }
         });
       }
 
       if (codePane){
-        codePane.addEventListener('scroll', syncScrollPositions);
+        codePane.addEventListener('scroll', ()=>{
+          syncScrollPositions();
+          renderVirtualSlice(false);
+        });
       }
 
       if (lineGutter && codePane){
@@ -3537,11 +3713,13 @@ async function changeVersion(version, opts = {}) {
           e.preventDefault();
           codePane.scrollTop += e.deltaY;
           syncScrollPositions();
+          renderVirtualSlice(false);
         }, { passive:false });
         lineGutter.addEventListener('scroll', ()=>{
           if (Math.abs((codePane.scrollTop||0) - (lineGutter.scrollTop||0)) > 1){
             codePane.scrollTop = lineGutter.scrollTop || 0;
           }
+          renderVirtualSlice(false);
         });
       }
 
