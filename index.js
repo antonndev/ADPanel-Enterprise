@@ -2859,6 +2859,21 @@ function buildNodeVersionConfig(versionId, entry, meta){
   };
 }
 
+function enforceNodeDockerRuntime(tpl, entry, meta){
+  if (!tpl) return;
+  tpl.docker = tpl.docker || {};
+  tpl.docker.image = "node";
+  tpl.docker.tag = "20";
+  tpl.docker.volumes = Array.isArray(tpl.docker.volumes) && tpl.docker.volumes.length
+    ? tpl.docker.volumes
+    : ["{BOT_DIR}:/app"];
+  const startFile = inferNodeStart(entry, meta);
+  if (!tpl.docker.command || !String(tpl.docker.command).trim()) {
+    tpl.docker.command = `cd /app && npm install && node /app/${startFile}`;
+  }
+  tpl.docker.env = Object.assign({ NODE_ENV: "production" }, tpl.docker.env || {});
+}
+
 const PYTHON_MAIN_TEMPLATE = `def greet(name="World"):
     return f"Hello, {name}!"
 
@@ -4104,6 +4119,9 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
             const tpl = resolvedTemplateDef || runtimeTemplate;
             
             const tplCopy = JSON.parse(JSON.stringify(tpl));
+            if (normalizedTemplateId === "nodejs") {
+              enforceNodeDockerRuntime(tplCopy, entry, resolvedMeta);
+            }
             if (normalizedTemplateId === "minecraft") {
               const srv = findServer(bot);
               const hostPort = srv && srv.port ? clampPort(srv.port) : clampPort(port || 25565);
