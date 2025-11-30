@@ -273,64 +273,136 @@
       #bigEditor{ margin-top:10px; display:flex; flex-direction:column; gap:10px; }
 
       /* Code area – line numbers */
-      .code-area{
+      :root{
+        --code-pad-top:16px;
+        --code-pad-bottom:88px;
+        --code-line-height:1.6;
+        --code-font-size:14px;
+      }
+
+      .code-shell{
         width:100%;
         max-height:60vh;
-        overflow:auto;
-        padding:0;
-        background:#05070b;
-        border-radius:10px;
-        border:1px solid rgba(148,163,184,0.45);
+        height:60vh;
+        min-height:320px;
+        display:flex;
+        align-items:stretch;
+        background:#1e1e1e;
+        border-radius:14px;
+        box-shadow:0 18px 40px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.04);
+        overflow:hidden;
+        position:relative;
+        scrollbar-width:none;
+        -ms-overflow-style:none;
+      }
+      .code-shell::-webkit-scrollbar{width:0;height:0;}
+      .line-gutter{
+        flex:0 0 64px;
+        width:64px;
+        min-width:64px;
+        background:#1a1d23;
+        color:#7c8494;
+        padding:var(--code-pad-top) 18px var(--code-pad-bottom) 12px;
+        text-align:right;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size:13px;
-        line-height:1.4;
-        counter-reset:line;
+        font-size:var(--code-font-size);
+        line-height:var(--code-line-height);
+        border-right:1px solid rgba(255,255,255,0.05);
+        display:flex;
+        flex-direction:column;
+        align-items:flex-end;
+        box-sizing:border-box;
+        scrollbar-width:none;
+        -ms-overflow-style:none;
+        overflow-y:auto;
+        overflow-x:hidden;
+        overscroll-behavior:contain;
+        height:100%;
       }
-      .code-area div {
-        position: relative;
-        padding: 0px 12px 0px 36px;
-        min-height: 18px;
-        white-space: pre;
+      .line-gutter::-webkit-scrollbar{display:none;width:0;height:0;}
+      .line-gutter div{ padding:0; height:calc(var(--code-line-height) * 1em); }
+      .code-pane{
+        position:relative;
+        flex:1;
+        overflow:auto;
+        min-height:0;
+        height:100%;
+        scrollbar-width:none;
+        -ms-overflow-style:none;
+        overscroll-behavior:contain;
       }
-      .code-area div::before {
-        counter-increment: line;
-        content: counter(line);
-        position: absolute;
-        left: 8px;
-        top: 2.5px;
-        bottom: 0;
-        display: flex;
-        align-items: flex-start;
-        justify-content: flex-end;
-        width: 22px;
-        font-size: 11px;
-        color: #4b5563;
+      .code-pane::-webkit-scrollbar{width:0;height:0;}
+      .code-overlay,
+      .code-input{
+        position:absolute;
+        inset:0;
+        margin:0;
+        padding:var(--code-pad-top) 22px var(--code-pad-bottom) 24px;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size:var(--code-font-size);
+        line-height:var(--code-line-height);
+        white-space:pre;
+        border:0;
+        outline:none;
+        background:transparent;
+        height:auto;
+        min-height:100%;
+        box-sizing:border-box;
+      }
+      .code-overlay{
+        color:#e6eef8;
+        pointer-events:none;
+        z-index:1;
+        margin:0;
+        overflow:visible;
+      }
+      .code-overlay::after{ content:""; display:block; height:0; }
+      .code-overlay .line{ min-height:calc(var(--code-line-height) * 1em); }
+      .code-input{
+        z-index:2;
+        color:transparent;
+        caret-color:#e6eef8;
+        resize:none;
+        overflow:visible;
+      }
+      .code-spacer{
+        position:relative;
+        width:100%;
+        height:0;
+        pointer-events:none;
+        visibility:hidden;
       }
       textarea{
         width:100%;
         max-height:60vh;
         overflow:auto;
-        padding:10px;
-        border-radius:10px;
-        border:1px solid rgba(148,163,184,0.45);
-        background:#05070b;
+        padding:12px;
+        border-radius:12px;
+        border:1px solid #2d2d2d;
+        background:#1e1e1e;
         color:#e6eef8;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size:13px;
+        font-size:14px;
         resize:vertical;
+        outline:none;
       }
-      .code-area:focus, #textArea:focus{ outline:none; box-shadow:none; border-color:rgba(59,130,246,0.8); }
+      #textArea:focus{ outline:none; box-shadow:none; border-color:transparent; }
 
       /* Syntax highlight colors */
-      .code-area .kw{color:#93c5fd;}
-      .code-area .str{color:#f97316;}
-      .code-area .num{color:#a5b4fc;}
-      .code-area .com{color:#6b7280;font-style:italic;}
-      .code-area .fn{color:#4ade80;}
-      .code-area .cls{color:#facc15;}
-      .code-area .prop{color:#f9a8d4;}
-      .code-area .tag{color:#f97316;}
-      .code-area .attr{color:#fde68a;}
+      .code-overlay{color:#d4d4d4;}
+      .code-overlay [data-token="kw"]{color:#c586c0;}
+      .code-overlay [data-token="str"]{color:#ce9178;}
+      .code-overlay [data-token="num"]{color:#b5cea8;}
+      .code-overlay [data-token="com"]{color:#6a9955;font-style:italic;}
+      .code-overlay [data-token="fn"]{color:#dcdcaa;}
+      .code-overlay [data-token="cls"]{color:#4ec9b0;}
+      .code-overlay [data-token="prop"]{color:#9cdcfe;}
+      .code-overlay [data-token="tag"]{color:#569cd6;}
+      .code-overlay [data-token="attr"]{color:#dcdcaa;}
+      .code-overlay [data-token="const"]{color:#4fc1ff;}
+      .code-overlay [data-token="call"]{color:#9cdcfe;}
+      .code-overlay [data-token="bool"]{color:#569cd6;}
+      .code-overlay [data-token="type"]{color:#4ec9b0;}
 
       /* Dock */
       .dock-wrap{
@@ -794,8 +866,15 @@
         </div>
 
         <div id="bigEditor">
-          <div id="codeArea" class="code-area" contenteditable="true" spellcheck="false" style="display:none"></div>
-          <textarea id="textArea" style="display:none"></textarea>
+          <div id="codeShell" class="code-shell" style="display:none">
+            <div id="lineGutter" class="line-gutter"></div>
+            <div class="code-pane">
+              <pre id="codeOverlay" class="code-overlay"></pre>
+              <textarea id="codeInput" class="code-input" spellcheck="false"></textarea>
+              <div id="codeSpacer" class="code-spacer" aria-hidden="true"></div>
+            </div>
+          </div>
+          <textarea id="textArea" style="display:none" spellcheck="false"></textarea>
 
           <div style="display:flex;gap:8px;justify-content:flex-end">
             <button class="icon-btn" id="editorDiscard">Discard</button>
@@ -1112,7 +1191,12 @@
       const editorModal = document.getElementById("editorModal");
       const editorModalClose = document.getElementById("editorModalClose");
       const editorPath = document.getElementById("editorPath");
-      const codeArea = document.getElementById("codeArea");
+      const codeShell = document.getElementById("codeShell");
+      const codePane = document.querySelector('.code-pane');
+      const codeOverlay = document.getElementById("codeOverlay");
+      const codeInput = document.getElementById("codeInput");
+      const lineGutter = document.getElementById("lineGutter");
+      const codeSpacer = document.getElementById("codeSpacer");
       const textArea = document.getElementById("textArea");
       const editorSave = document.getElementById("editorSave");
       const editorDiscard = document.getElementById("editorDiscard");
@@ -1167,6 +1251,24 @@
       const mrPluginInstallBtn = document.getElementById("mrPluginInstallBtn");
 
       let currentEditorPath = "";
+      const virtualEditor = {
+        allLines: [],
+        originalLines: [],
+        visibleStart: 0,
+        visibleEnd: 0,
+        renderWindow: 180,
+        buffer: 50,
+        chunkLines: 180,
+        chunkDelayMs: 10,
+        lineHeight: 22,
+        paddingTop: 16,
+        paddingBottom: 88,
+        gutterPaddingTop: 16,
+        gutterPaddingBottom: 88,
+        streamingAbort: null,
+        isStreaming: false,
+        pendingRemainder: "",
+      };
 
       let serverInfo = null;
       let SERVER_NODE_ID = null;
@@ -3041,8 +3143,7 @@ async function changeVersion(version, opts = {}) {
                 const rel = currentPath ? currentPath + "/" + e.name : e.name;
                 if (REMOTE_MODE) {
                   try{
-                    const content = await apiReadFile(rel);
-                    if (content !== null) openEditorModal(rel, content);
+                    openEditorModal(rel, '', { streamLoader: ()=> streamFileIntoEditor(rel) });
                   } catch(err){ alert('Open failed: ' + (err.message || err)); }
                 } else {
                   socket.emit("readFile", { bot, path: rel });
@@ -3111,11 +3212,175 @@ async function changeVersion(version, opts = {}) {
         alert('Uploads completed');
       }
 
-      function openEditorModal(path, content){
+      function normalizeInput(raw){
+        if(typeof raw !== 'string') return '';
+        return raw.replace(/\r\n?/g, '\n');
+      }
+
+      function refreshVirtualMetrics(){
+        virtualEditor.lineHeight = getLineHeightPx();
+        const { top: codeTop, bottom: codeBottom } = getCodePadding();
+        const { top: gutTop, bottom: gutBottom } = getGutterPadding();
+        virtualEditor.paddingTop = codeTop;
+        virtualEditor.paddingBottom = codeBottom;
+        virtualEditor.gutterPaddingTop = gutTop;
+        virtualEditor.gutterPaddingBottom = gutBottom;
+      }
+
+      function resetVirtualEditorState(){
+        refreshVirtualMetrics();
+        virtualEditor.allLines = [];
+        virtualEditor.originalLines = [];
+        virtualEditor.visibleStart = 0;
+        virtualEditor.visibleEnd = 0;
+        virtualEditor.pendingRemainder = "";
+        virtualEditor.isStreaming = false;
+        if (virtualEditor.streamingAbort){
+          try{ virtualEditor.streamingAbort.abort(); }catch{}
+        }
+        virtualEditor.streamingAbort = null;
+        if (codeOverlay){ codeOverlay.innerHTML=''; codeOverlay.style.transform='translateY(0px)'; }
+        if (codeInput){ codeInput.value=''; codeInput.style.transform='translateY(0px)'; }
+        if (lineGutter){ lineGutter.innerHTML=''; lineGutter.style.transform='translateY(0px)'; }
+        updateVirtualSpacer();
+        renderVirtualSlice(true);
+      }
+
+      function updateVirtualSpacer(){
+        if (!codeSpacer) return;
+        refreshVirtualMetrics();
+        const totalLines = Math.max(1, virtualEditor.allLines.length);
+        const totalHeight = (totalLines * virtualEditor.lineHeight) + virtualEditor.paddingTop + virtualEditor.paddingBottom;
+        codeSpacer.style.height = `${totalHeight}px`;
+      }
+
+      function setVirtualContent(raw){
+        const normalized = normalizeInput(raw || '');
+        virtualEditor.allLines = normalized.split('\n');
+        virtualEditor.visibleStart = 0;
+        virtualEditor.visibleEnd = 0;
+        updateVirtualSpacer();
+        renderVirtualSlice(true);
+      }
+
+      function computeVisibleWindow(){
+        if (!codePane) return { start: 0, end: 0 };
+        const scrollTop = codePane.scrollTop || 0;
+        const lh = virtualEditor.lineHeight || 22;
+        const viewHeight = codePane.clientHeight || 0;
+        const fromTop = Math.max(0, scrollTop - virtualEditor.paddingTop);
+        const approxStart = Math.max(0, Math.floor(fromTop / lh) - virtualEditor.buffer);
+        const maxLines = Math.max(virtualEditor.renderWindow, Math.ceil((viewHeight / lh) + (virtualEditor.buffer * 2)));
+        const total = Math.max(1, virtualEditor.allLines.length);
+        const approxEnd = Math.min(total, approxStart + maxLines);
+        return { start: approxStart, end: approxEnd };
+      }
+
+      function renderVirtualSlice(force=false){
+        if (!codePane || !codeOverlay || !lineGutter || !codeInput) return;
+        refreshVirtualMetrics();
+        const range = computeVisibleWindow();
+        if (!force && range.start === virtualEditor.visibleStart && range.end === virtualEditor.visibleEnd) return;
+        const source = virtualEditor.allLines.length ? virtualEditor.allLines : [''];
+        const slice = source.slice(range.start, range.end);
+        if (!slice.length) slice.push('');
+        const highlighted = highlightCode(slice.join('\n'), currentEditorPath || '');
+        const offset = virtualEditor.paddingTop + (range.start * virtualEditor.lineHeight);
+        const gutterOffset = virtualEditor.gutterPaddingTop + (range.start * virtualEditor.lineHeight);
+        codeOverlay.innerHTML = highlighted;
+        codeOverlay.style.transform = `translateY(${offset}px)`;
+        codeInput.value = slice.join('\n');
+        codeInput.style.transform = `translateY(${offset}px)`;
+        codeInput.dataset.offsetStart = String(range.start);
+        lineGutter.innerHTML = slice.map((_,i)=>`<div>${range.start + i + 1}</div>`).join('');
+        lineGutter.style.transform = `translateY(${gutterOffset}px)`;
+        virtualEditor.visibleStart = range.start;
+        virtualEditor.visibleEnd = range.start + slice.length;
+        syncScrollPositions();
+      }
+
+      function applyInputToAllLines(){
+        const start = Number(codeInput.dataset.offsetStart || 0);
+        const before = Math.max(0, start);
+        const sliceLines = normalizeInput(codeInput.value || '').split('\n');
+        const replaceCount = Math.max(0, virtualEditor.visibleEnd - virtualEditor.visibleStart);
+        virtualEditor.allLines.splice(before, replaceCount, ...sliceLines);
+        virtualEditor.visibleEnd = before + sliceLines.length;
+        updateVirtualSpacer();
+        renderVirtualSlice(true);
+      }
+
+      function getEditorContent(){
+        if (codeShell && codeShell.style.display !== 'none'){ return virtualEditor.allLines.join('\n'); }
+        return textArea ? textArea.value : '';
+      }
+
+      function storeOriginalLines(){
+        virtualEditor.originalLines = virtualEditor.allLines.slice();
+        if (textArea) textArea.dataset.original = textArea.value;
+        if (codeInput) codeInput.dataset.original = '';
+      }
+
+      async function streamFileIntoEditor(relPath){
+        const target = REMOTE_MODE
+          ? `${NODE_API_BASE}/file?path=${encodeURIComponent(relPath)}&stream=1`
+          : `/api/servers/${encodeURIComponent(bot)}/file?path=${encodeURIComponent(relPath)}&stream=1`;
+        const controller = new AbortController();
+        virtualEditor.streamingAbort = controller;
+        virtualEditor.isStreaming = true;
+        virtualEditor.pendingRemainder = '';
+        updateVirtualSpacer();
+        renderVirtualSlice(true);
+        try{
+          const res = await fetch(target, { signal: controller.signal });
+          if(!res.ok) throw new Error('read file failed');
+          if(!res.body || typeof res.body.getReader !== 'function'){
+            const text = await res.text();
+            setVirtualContent(text);
+            storeOriginalLines();
+            virtualEditor.isStreaming = false;
+            return;
+          }
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffered = '';
+          while(true){
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffered += decoder.decode(value, { stream:true });
+            const lines = buffered.split('\n');
+            buffered = lines.pop() || '';
+            if (lines.length){
+              await appendVirtualLines(lines);
+            }
+          }
+          if(buffered){ await appendVirtualLines([buffered]); }
+          storeOriginalLines();
+        }catch(err){
+          if (controller.signal.aborted) return;
+          alert('Open failed: ' + (err.message || err));
+        }finally{
+          virtualEditor.isStreaming = false;
+        }
+      }
+
+      async function appendVirtualLines(lines){
+        let remaining = lines.slice();
+        while(remaining.length){
+          const chunk = remaining.splice(0, virtualEditor.chunkLines);
+          virtualEditor.allLines.push(...chunk);
+          updateVirtualSpacer();
+          renderVirtualSlice(false);
+          const jitter = Math.max(5, Math.min(15, virtualEditor.chunkDelayMs + (Math.random()*6 - 3)));
+          await new Promise(r=>setTimeout(r, jitter));
+        }
+      }
+
+      function openEditorModal(path, content, opts={}){
         currentEditorPath = path;
         editorModal.classList.add('show'); editorModal.style.display='flex'; document.getElementById('editorPath').textContent=path;
         const lower=path.toLowerCase();
-        if(
+        const rich = (
           lower.endsWith('.js') ||
           lower.endsWith('.ts') ||
           lower.endsWith('.json') ||
@@ -3124,16 +3389,23 @@ async function changeVersion(version, opts = {}) {
           lower.endsWith('.html') ||
           lower.endsWith('.htm') ||
           lower.endsWith('.css')
-        ){
+        );
+        if(rich){
           textArea.style.display='none';
-          codeArea.style.display='block';
-          codeArea.innerHTML=highlightCode(content, path);
-          codeArea.dataset.raw=content;
-          placeCaretAtEnd(codeArea);
-          codeArea.focus();
+          codeShell.style.display='flex';
+          resetVirtualEditorState();
+          if (opts && typeof opts.streamLoader === 'function') {
+            opts.streamLoader();
+          } else {
+            const normalized = normalizeInput(content || '');
+            setVirtualContent(normalized);
+            virtualEditor.originalLines = virtualEditor.allLines.slice();
+            renderVirtualSlice(true);
+          }
+          codeInput.focus();
         }
         else {
-          codeArea.style.display='none';
+          codeShell.style.display='none';
           textArea.style.display='block';
           textArea.value=content;
           textArea.dataset.original=content;
@@ -3141,21 +3413,44 @@ async function changeVersion(version, opts = {}) {
         }
         if(!hasPerm('files_create')){ editorSave.classList.add('disabled'); }
       }
-      function closeEditorModal(){ editorModal.classList.remove('show'); editorModal.style.display='none'; document.getElementById('editorPath').textContent=''; codeArea.innerHTML=''; textArea.value=''; currentEditorPath=""; }
+      function closeEditorModal(){
+        editorModal.classList.remove('show');
+        editorModal.style.display='none';
+        document.getElementById('editorPath').textContent='';
+        codeOverlay.innerHTML='';
+        codeInput.value='';
+        codeShell.style.display='none';
+        textArea.value='';
+        lineGutter.innerHTML='';
+        currentEditorPath="";
+        if (virtualEditor.streamingAbort){
+          try{ virtualEditor.streamingAbort.abort(); } catch{}
+        }
+        resetVirtualEditorState();
+      }
       editorModalClose.addEventListener('click', closeEditorModal);
       editorDiscard.addEventListener('click', () => {
-        if (textArea.style.display!=='none') textArea.value = textArea.dataset.original || '';
-        else codeArea.innerHTML = highlightCode(codeArea.dataset.raw || '', currentEditorPath);
+        if (textArea.style.display!=='none'){
+          textArea.value = textArea.dataset.original || '';
+        } else {
+          const original = (virtualEditor.originalLines && virtualEditor.originalLines.length)
+            ? virtualEditor.originalLines.join('\n')
+            : (codeInput.dataset.original || '');
+          setVirtualContent(original);
+          virtualEditor.originalLines = virtualEditor.allLines.slice();
+          renderVirtualSlice(true);
+        }
       });
-      editorSave.addEventListener('click', async () => {
+      async function performSave(){
         if (!hasPerm('files_create')) return alert('Unauthorized');
         const path = document.getElementById('editorPath').textContent; if(!path) return alert('No file open');
-        let contentToSave = (textArea.style.display!=='none') ? textArea.value : getTextFromContentEditable(codeArea);
+        let contentToSave = getEditorContent();
         try{
           await apiWriteFile(path, contentToSave);
           setTimeout(()=> { loadExplorer(currentPath); alert('Saved'); closeEditorModal(); }, 150);
         }catch(err){ alert('Save failed: ' + (err.message || err)); }
-      });
+      }
+      editorSave.addEventListener('click', performSave);
 
       function run(){
         if (!hasPerm('server_start')) return alert('Unauthorized');
@@ -3252,6 +3547,13 @@ async function changeVersion(version, opts = {}) {
       });
 
       document.addEventListener('keydown', (e)=> {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='s'){
+          if (editorModal && editorModal.classList.contains('show')){
+            e.preventDefault();
+            performSave();
+            return;
+          }
+        }
         if (e.key==='Escape') {
           if (editorModal && editorModal.classList.contains('show')) { closeEditorModal(); return; }
           if (filesModal && filesModal.classList.contains('show')) { closeFilesModal(); return; }
@@ -3292,50 +3594,138 @@ async function changeVersion(version, opts = {}) {
       function highlightCode(src, path){
         if(typeof src!=='string') src='';
         const lang = detectLanguageFromPath(path);
+        const span = (tok, val) => `<span data-token="${tok}">${val}</span>`;
         let out = escapeHtmlRaw(src);
         if (lang === 'yaml'){
-          out = out.replace(/(#.*)$/gm,'<span class="com">$1</span>');
-          out = out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*')/g,'<span class="str">$1</span>');
+          out = out.replace(/(#.*)$/gm,(_,m)=> span('com', m));
+          out = out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*')/g,m=> span('str', m));
         } else if (lang === 'json'){
-          out = out.replace(/"(\\.|[^"\\])*"/g,'<span class="str">$&</span>');
-          out = out.replace(/\b(true|false|null)\b/g,'<span class="kw">$1</span>');
-          out = out.replace(/\b(\d+(\.\d+)?)\b/g,'<span class="num">$1</span>');
+          out = out.replace(/"(\\.|[^"\\])*"/g,m=> span('str', m));
+          out = out.replace(/\b(true|false|null)\b/g,m=> span('kw', m));
+          out = out.replace(/\b(\d+(\.\d+)?)\b/g,m=> span('num', m));
         } else if (lang === 'html'){
-          out = out.replace(/(<!--[\s\S]*?-->)/g,'<span class="com">$1</span>');
+          out = out.replace(/(<!--[\s\S]*?-->)/g,(_,m)=> span('com', m));
           out = out.replace(/(&lt;\/?)([a-zA-Z0-9\-]+)([^&gt;]*?)(&gt;)/g,(m, open, tag, attrs, close)=>{
-            attrs = attrs.replace(/([a-zA-Z0-9\-:]+)=(".*?"|'.*?')/g,'<span class="attr">$1</span>=<span class="str">$2</span>');
-            return '<span class="tag">'+open+tag+attrs+close+'</span>';
+            attrs = attrs.replace(/([a-zA-Z0-9\-:]+)=(".*?"|'.*?')/g,(_,k,v)=>`${span('attr', k)}=${span('str', v)}`);
+            return span('tag', `${open}${tag}${attrs}${close}`);
           });
         } else if (lang === 'css'){
-          out = out.replace(/(\/\*[\s\S]*?\*\/)/g,'<span class="com">$1</span>');
-          out = out.replace(/([a-zA-Z\-]+)(?=\s*:)/g,'<span class="prop">$1</span>');
-          out = out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*')/g,'<span class="str">$1</span>');
-          out = out.replace(/\b(\d+(\.\d+)?)(px|rem|em|%)?\b/g,'<span class="num">$1$3</span>');
+          out = out.replace(/(\/\*[\s\S]*?\*\/)/g,(_,m)=> span('com', m));
+          out = out.replace(/([a-zA-Z\-]+)(?=\s*:)/g,m=> span('prop', m));
+          out = out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*')/g,m=> span('str', m));
+          out = out.replace(/\b(\d+(\.\d+)?)(px|rem|em|%)?\b/g,m=> span('num', m));
         } else {
-          out=out.replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g,m=>`<span class="com">${m.replace(/</g,'&lt;')}</span>`);
-          out=out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)/g,m=>`<span class="str">${m.replace(/</g,'&lt;')}</span>`);
-          out=out.replace(/\b([0-9]+(?:\.[0-9]+)?)\b/g,`<span class="num">$1</span>`);
-          out=out.replace(/\bclass\s+([A-Za-z_$][\w$]*)/g,(_,n)=>`class <span class="cls">${n}</span>`);
-          out=out.replace(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g,(_,n)=>`function <span class="fn">${n}</span>(`);
-          out=out.replace(/([A-Za-z_$][\w$]*)\s*=\s*\(.*?\)\s*=>/g,m=>m.replace(/([A-Za-z_$][\w$]*)/,`<span class="fn">$1</span>`));
+          out=out.replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g,m=> span('com', m.replace(/</g,'&lt;')));
+          out=out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)/g,m=> span('str', m.replace(/</g,'&lt;')));
+          out=out.replace(/\b([0-9]+(?:\.[0-9]+)?)\b/g,m=> span('num', m));
+          out=out.replace(/\b(true|false|null|undefined)\b/g,m=> span('bool', m));
+          out=out.replace(/\bclass\s+([A-Za-z_$][\w$]*)/g,(_,n)=>`class ${span('cls', n)}`);
+          out=out.replace(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g,(_,n)=>`function ${span('fn', n)}(`);
+          out=out.replace(/([A-Za-z_$][\w$]*)\s*=\s*\(.*?\)\s*=>/g,m=>m.replace(/([A-Za-z_$][\w$]*)/,p=> span('fn', p)));
+          out=out.replace(/\b(new|require|module|exports)\b/g,m=> span('const', m));
+          out=out.replace(/\b([A-Za-z_$][\w$]*)\s*\(/g,m=> span('call', m));
+          out=out.replace(/:\s*([A-Z][A-Za-z0-9_$]*)/g,(_,n)=>`: ${span('type', n)}`);
           const keywords=['const','let','var','return','if','else','for','while','switch','case','break','continue','class','new','try','catch','finally','throw','await','async','import','from','export','extends','super','this','typeof','instanceof','in'];
           const kwRegex=new RegExp('\\b('+keywords.join('|')+')\\b','g');
-          out=out.replace(kwRegex,`<span class="kw">$1</span>`);
+          out=out.replace(kwRegex,m=> span('kw', m));
         }
         const lines = out.split(/\r\n|\r|\n/);
-        return lines.map(line => `<div>${line || '&nbsp;'}</div>`).join('');
+        return lines.map(line => `<div class="line">${line || '&nbsp;'}</div>`).join('');
+      }
+
+      function getLineHeightPx(){
+        const lh = codeInput ? parseFloat(getComputedStyle(codeInput).lineHeight) : NaN;
+        return Number.isFinite(lh) ? lh : 22;
+      }
+
+      function getCodePadding(){
+        const styleTarget = codeOverlay || codeInput;
+        if(!styleTarget) return { top:16, bottom:88 };
+        const cs = getComputedStyle(styleTarget);
+        const top = parseFloat(cs.paddingTop) || 16;
+        const bottom = parseFloat(cs.paddingBottom) || 88;
+        return { top, bottom };
+      }
+
+      function getGutterPadding(){
+        if(!lineGutter) return { top:16, bottom:88 };
+        const cs = getComputedStyle(lineGutter);
+        const top = parseFloat(cs.paddingTop) || 16;
+        const bottom = parseFloat(cs.paddingBottom) || 88;
+        return { top, bottom };
+      }
+
+      function measureContentHeight(raw){
+        const normalized = normalizeInput(raw || '');
+        const lineCount = Math.max(1, normalized.split('\n').length);
+        const lineHeight = getLineHeightPx();
+        const { top: paddingTop, bottom: paddingBottom } = getCodePadding();
+        const calculated = (lineCount * lineHeight) + paddingTop + paddingBottom;
+        const minShell = (codeShell ? codeShell.clientHeight : 0) + (lineHeight * 1.5);
+        return Math.max(minShell, calculated);
+      }
+
+      function renderHighlightedEditor(raw){
+        setVirtualContent(raw || '');
+        renderVirtualSlice(true);
+      }
+
+      function syncLineNumbers(raw){
+        const count = Math.max(1, (raw.match(/\n/g)||[]).length + 1);
+        lineGutter.innerHTML = Array.from({length:count}, (_,i)=>`<div>${i+1}</div>`).join('');
+      }
+
+      function syncCodeSpacer(raw){
+        updateVirtualSpacer();
+      }
+
+      function syncScrollPositions(){
+        const top = codePane ? codePane.scrollTop : (codeInput ? codeInput.scrollTop : 0);
+        if(lineGutter) lineGutter.scrollTop = top;
+      }
+
+      if (codeInput){
+        codeInput.addEventListener('input', ()=>{
+          applyInputToAllLines();
+        });
+        codeInput.addEventListener('keydown', (e)=>{
+          if(e.key === 'Tab'){
+            e.preventDefault();
+            const start = codeInput.selectionStart;
+            const end = codeInput.selectionEnd;
+            const val = codeInput.value;
+            codeInput.value = `${val.slice(0,start)}  ${val.slice(end)}`;
+            codeInput.selectionStart = codeInput.selectionEnd = start + 2;
+            applyInputToAllLines();
+          }
+        });
+      }
+
+      if (codePane){
+        codePane.addEventListener('scroll', ()=>{
+          syncScrollPositions();
+          renderVirtualSlice(false);
+        });
+      }
+
+      if (lineGutter && codePane){
+        lineGutter.addEventListener('wheel', (e)=>{
+          e.preventDefault();
+          codePane.scrollTop += e.deltaY;
+          syncScrollPositions();
+          renderVirtualSlice(false);
+        }, { passive:false });
+        lineGutter.addEventListener('scroll', ()=>{
+          if (Math.abs((codePane.scrollTop||0) - (lineGutter.scrollTop||0)) > 1){
+            codePane.scrollTop = lineGutter.scrollTop || 0;
+          }
+          renderVirtualSlice(false);
+        });
       }
 
       function highlightJS(src){
         return highlightCode(src, currentEditorPath || '');
       }
-
-      function getTextFromContentEditable(el){
-        let txt=el.innerText||el.textContent||'';
-        txt=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-        return txt;
-      }
-      function placeCaretAtEnd(el){ el.focus(); if(window.getSelection&&document.createRange){ const r=document.createRange(); r.selectNodeContents(el); r.collapse(false); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);} }
       function startSimulatedProgress(from=0,to=90,duration=400){
         if(simInterval){ clearInterval(simInterval); simInterval=null; }
         let pct=from; const steps=Math.max(8,Math.floor(duration/80)); const step=(to-from)/steps;
