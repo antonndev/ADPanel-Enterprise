@@ -281,9 +281,12 @@
         border-radius:14px;
         box-shadow:0 18px 40px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.04);
         overflow:hidden;
+        position:relative;
       }
       .line-gutter{
-        flex:0 0 1px;
+        flex:0 0 64px;
+        width:64px;
+        min-width:64px;
         background:#1a1d23;
         color:#7c8494;
         padding:12px 18px 100px 12px;
@@ -293,6 +296,10 @@
         line-height:1.58;
         border-right:1px solid rgba(255,255,255,0.05);
         overflow:hidden;
+        display:flex;
+        flex-direction:column;
+        align-items:flex-end;
+        box-sizing:border-box;
       }
       .line-gutter div{ padding:4px 0; }
       .code-pane{
@@ -322,6 +329,8 @@
         z-index:1;
         margin:0;
         overflow:auto;
+        scrollbar-width:none;
+        -ms-overflow-style:none;
       }
       .code-overlay .line{ min-height:24px; }
       .code-input{
@@ -330,8 +339,11 @@
         caret-color:#e6eef8;
         resize:none;
         overflow:auto;
+        scrollbar-width:none;
+        -ms-overflow-style:none;
       }
       .code-pane::-webkit-scrollbar,.code-input::-webkit-scrollbar,.code-overlay::-webkit-scrollbar{display:none;}
+      .code-pane{ scrollbar-width:none; -ms-overflow-style:none; }
       textarea{
         width:100%;
         max-height:60vh;
@@ -349,6 +361,7 @@
       #textArea:focus{ outline:none; box-shadow:none; border-color:transparent; }
 
       /* Syntax highlight colors */
+      .code-overlay{color:#d4d4d4;}
       .code-overlay [data-token="kw"]{color:#c586c0;}
       .code-overlay [data-token="str"]{color:#ce9178;}
       .code-overlay [data-token="num"]{color:#b5cea8;}
@@ -358,8 +371,10 @@
       .code-overlay [data-token="prop"]{color:#9cdcfe;}
       .code-overlay [data-token="tag"]{color:#569cd6;}
       .code-overlay [data-token="attr"]{color:#dcdcaa;}
-      .code-overlay [data-token="call"]{color:#79c0ff;}
       .code-overlay [data-token="const"]{color:#4fc1ff;}
+      .code-overlay [data-token="call"]{color:#9cdcfe;}
+      .code-overlay [data-token="bool"]{color:#569cd6;}
+      .code-overlay [data-token="type"]{color:#4ec9b0;}
 
       /* Dock */
       .dock-wrap{
@@ -3378,11 +3393,13 @@ async function changeVersion(version, opts = {}) {
           out=out.replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g,m=> span('com', m.replace(/</g,'&lt;')));
           out=out.replace(/("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)/g,m=> span('str', m.replace(/</g,'&lt;')));
           out=out.replace(/\b([0-9]+(?:\.[0-9]+)?)\b/g,m=> span('num', m));
+          out=out.replace(/\b(true|false|null|undefined)\b/g,m=> span('bool', m));
           out=out.replace(/\bclass\s+([A-Za-z_$][\w$]*)/g,(_,n)=>`class ${span('cls', n)}`);
           out=out.replace(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g,(_,n)=>`function ${span('fn', n)}(`);
           out=out.replace(/([A-Za-z_$][\w$]*)\s*=\s*\(.*?\)\s*=>/g,m=>m.replace(/([A-Za-z_$][\w$]*)/,p=> span('fn', p)));
           out=out.replace(/\b(new|require|module|exports)\b/g,m=> span('const', m));
           out=out.replace(/\b([A-Za-z_$][\w$]*)\s*\(/g,m=> span('call', m));
+          out=out.replace(/:\s*([A-Z][A-Za-z0-9_$]*)/g,(_,n)=>`: ${span('type', n)}`);
           const keywords=['const','let','var','return','if','else','for','while','switch','case','break','continue','class','new','try','catch','finally','throw','await','async','import','from','export','extends','super','this','typeof','instanceof','in'];
           const kwRegex=new RegExp('\\b('+keywords.join('|')+')\\b','g');
           out=out.replace(kwRegex,m=> span('kw', m));
