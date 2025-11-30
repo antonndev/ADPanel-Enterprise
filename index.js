@@ -4023,10 +4023,40 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
         case "run": {
           const entry = findServer(bot);
           const resolvedTemplate = resolveTemplateForBot(bot);
+          const resolvedMeta = resolvedTemplate?.meta || {};
           const effectiveTemplateId = templateId || entry?.template || resolvedTemplate?.template || null;
           const normalizedTemplateId = normalizeTemplateId(effectiveTemplateId);
-          const resolvedTemplateDef = normalizedTemplateId ? findTemplateById(normalizedTemplateId) : null;
-          const canonicalTemplateId = resolvedTemplateDef ? normalizedTemplateId : (normalizedTemplateId || null);
+          let resolvedTemplateDef = normalizedTemplateId ? findTemplateById(normalizedTemplateId) : null;
+          const runtimeTemplate = buildTemplateFromRuntime(normalizedTemplateId, entry?.runtime);
+
+          // Fallback: if we have an explicit template id but couldn't load it (e.g. missing
+          // templates.json entry), use the in-memory defaults so we never regress to the
+          // legacy nginx guess for Node.js/other templates.
+          if (!resolvedTemplateDef && normalizedTemplateId) {
+            resolvedTemplateDef = DEFAULT_TEMPLATES.find(t => normalizeTemplateId(t.id) === normalizedTemplateId) || null;
+          }
+
+          // As a last resort for Node.js, synthesize a minimal template so we still start
+          // with the Node image instead of the static nginx fallback.
+          if (!resolvedTemplateDef && normalizedTemplateId === "nodejs") {
+            const startFile = inferNodeStart(entry, resolvedMeta);
+            resolvedTemplateDef = {
+              id: "nodejs",
+              docker: {
+                image: "node",
+                tag: "20-alpine",
+                command: `sh -c "cd /app && npm install && node /app/${startFile}"`,
+                env: { NODE_ENV: "production" },
+                volumes: ["{BOT_DIR}:/app"],
+                ports: [],
+                restart: "unless-stopped"
+              }
+            };
+          }
+
+          const canonicalTemplateId = (resolvedTemplateDef || runtimeTemplate)
+            ? (normalizedTemplateId || runtimeTemplate?.id || null)
+            : (normalizedTemplateId || null);
 
           function buildTemplateFromRuntime(baseId, runtime) {
             if (!runtime || !runtime.image) return null;
@@ -4070,7 +4100,6 @@ socket.on('deleteFile', async ({ bot, path: rel }) => {
           await ensureNoContainer(bot);
 
           let runArgs;
-          const runtimeTemplate = buildTemplateFromRuntime(canonicalTemplateId, entry?.runtime);
           if (canonicalTemplateId && (resolvedTemplateDef || runtimeTemplate)) {
             const tpl = resolvedTemplateDef || runtimeTemplate;
             
