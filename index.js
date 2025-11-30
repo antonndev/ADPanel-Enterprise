@@ -2670,7 +2670,9 @@ try {
 function normalizeTemplateId(tpl){
   const raw = (tpl || '').toString().trim().toLowerCase();
   if (!raw) return '';
-  if (["discord-bot", "discord", "discord bot", "bot", "node", "nodejs", "python"].includes(raw)) return "discord-bot";
+  if (["discord-bot", "discord", "discord bot", "bot"].includes(raw)) return "discord-bot";
+  if (["node", "nodejs", "node.js"].includes(raw)) return "nodejs";
+  if (["python", "py"].includes(raw)) return "python";
   if (["mc", "minecraft"].includes(raw)) return "minecraft";
   return raw;
 }
