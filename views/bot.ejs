@@ -301,13 +301,15 @@
         font-size:15px;
         line-height:1.58;
         border-right:1px solid rgba(255,255,255,0.05);
-        overflow:hidden;
         display:flex;
         flex-direction:column;
         align-items:flex-end;
         box-sizing:border-box;
         scrollbar-width:none;
         -ms-overflow-style:none;
+        overflow-y:auto;
+        overflow-x:hidden;
+        overscroll-behavior:contain;
       }
       .line-gutter::-webkit-scrollbar{display:none;width:0;height:0;}
       .line-gutter div{ padding:4px 0; }
@@ -3444,9 +3446,12 @@ async function changeVersion(version, opts = {}) {
         const normalized = normalizeInput(raw || '');
         const lineCount = Math.max(1, normalized.split('\n').length);
         const lineHeight = getLineHeightPx();
-        const padding = 220;
-        const minShell = (codeShell ? codeShell.clientHeight : 0) + 40;
-        return Math.max(minShell, (lineCount * lineHeight) + padding);
+        const paddingTop = 16;
+        const paddingBottom = 220;
+        const overlayHeight = codeOverlay ? codeOverlay.scrollHeight : 0;
+        const calculated = (lineCount * lineHeight) + paddingTop + paddingBottom;
+        const minShell = (codeShell ? codeShell.clientHeight : 0) + (lineHeight * 2);
+        return Math.max(minShell, calculated, overlayHeight + paddingBottom);
       }
 
       function renderHighlightedEditor(raw){
@@ -3472,10 +3477,11 @@ async function changeVersion(version, opts = {}) {
 
       function syncCodeSpacer(raw){
         if(!codeSpacer) return;
-        const overlayHeight = codeOverlay ? codeOverlay.scrollHeight : 0;
         const measured = measureContentHeight(raw || (codeInput ? codeInput.value : ''));
-        const maxH = Math.max(overlayHeight, measured);
-        codeSpacer.style.height = `${maxH}px`;
+        codeSpacer.style.height = `${measured}px`;
+        if (codeInput) codeInput.style.minHeight = `${measured}px`;
+        if (codeOverlay) codeOverlay.style.minHeight = `${measured}px`;
+        if (lineGutter) lineGutter.style.minHeight = `${measured}px`;
       }
 
       function syncScrollPositions(){
@@ -3502,6 +3508,19 @@ async function changeVersion(version, opts = {}) {
 
       if (codePane){
         codePane.addEventListener('scroll', syncScrollPositions);
+      }
+
+      if (lineGutter && codePane){
+        lineGutter.addEventListener('wheel', (e)=>{
+          e.preventDefault();
+          codePane.scrollTop += e.deltaY;
+          syncScrollPositions();
+        }, { passive:false });
+        lineGutter.addEventListener('scroll', ()=>{
+          if (Math.abs((codePane.scrollTop||0) - (lineGutter.scrollTop||0)) > 1){
+            codePane.scrollTop = lineGutter.scrollTop || 0;
+          }
+        });
       }
 
       function highlightJS(src){
