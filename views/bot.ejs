@@ -273,42 +273,62 @@
       #bigEditor{ margin-top:10px; display:flex; flex-direction:column; gap:10px; }
 
       /* Code area – line numbers */
-      .code-area{
+      .code-shell{
         width:100%;
         max-height:60vh;
-        overflow:auto;
-        padding:0;
+        display:flex;
         background:#1e1e1e;
         border-radius:14px;
-        border:0;
+        box-shadow:0 18px 40px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.04);
+        overflow:hidden;
+      }
+      .line-gutter{
+        flex:0 0 96px;
+        background:#1a1d23;
+        color:#7c8494;
+        padding:12px 18px 12px 18px;
+        text-align:right;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size:15px;
+        line-height:1.58;
+        border-right:1px solid rgba(255,255,255,0.05);
+        overflow:hidden;
+      }
+      .line-gutter div{ padding:4px 0; }
+      .code-pane{
+        position:relative;
+        flex:1;
+        overflow:hidden;
+      }
+      .code-overlay,
+      .code-input{
+        position:absolute;
+        inset:0;
+        margin:0;
+        padding:12px 16px 12px 20px;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size:14px;
         line-height:1.58;
-        counter-reset:line;
-        box-shadow:0 18px 40px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.04);
+        white-space:pre;
+        border:0;
         outline:none;
+        background:transparent;
       }
-      .code-area div {
-        position: relative;
-        padding: 4px 18px 4px 76px;
-        min-height: 26px;
-        white-space: pre;
+      .code-overlay{
+        color:#e6eef8;
+        pointer-events:none;
+        z-index:1;
+        margin:0;
       }
-      .code-area div::before {
-        counter-increment: line;
-        content: counter(line);
-        position: absolute;
-        left: 12px;
-        top: 0;
-        bottom: 0;
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        width: 52px;
-        font-size: 14px;
-        font-weight: 700;
-        color: #7c8494;
+      .code-overlay .line{ min-height:24px; }
+      .code-input{
+        z-index:2;
+        color:transparent;
+        caret-color:#e6eef8;
+        resize:none;
+        overflow:auto;
       }
+      .code-pane::-webkit-scrollbar,.code-input::-webkit-scrollbar,.code-overlay::-webkit-scrollbar{display:none;}
       textarea{
         width:100%;
         max-height:60vh;
@@ -323,20 +343,20 @@
         resize:vertical;
         outline:none;
       }
-      .code-area:focus, #textArea:focus{ outline:none; box-shadow:none; border-color:transparent; }
+      #textArea:focus{ outline:none; box-shadow:none; border-color:transparent; }
 
       /* Syntax highlight colors */
-      .code-area [data-token="kw"]{color:#c586c0;}
-      .code-area [data-token="str"]{color:#ce9178;}
-      .code-area [data-token="num"]{color:#b5cea8;}
-      .code-area [data-token="com"]{color:#6a9955;font-style:italic;}
-      .code-area [data-token="fn"]{color:#dcdcaa;}
-      .code-area [data-token="cls"]{color:#4ec9b0;}
-      .code-area [data-token="prop"]{color:#9cdcfe;}
-      .code-area [data-token="tag"]{color:#569cd6;}
-      .code-area [data-token="attr"]{color:#dcdcaa;}
-      .code-area [data-token="call"]{color:#79c0ff;}
-      .code-area [data-token="const"]{color:#4fc1ff;}
+      .code-overlay [data-token="kw"]{color:#c586c0;}
+      .code-overlay [data-token="str"]{color:#ce9178;}
+      .code-overlay [data-token="num"]{color:#b5cea8;}
+      .code-overlay [data-token="com"]{color:#6a9955;font-style:italic;}
+      .code-overlay [data-token="fn"]{color:#dcdcaa;}
+      .code-overlay [data-token="cls"]{color:#4ec9b0;}
+      .code-overlay [data-token="prop"]{color:#9cdcfe;}
+      .code-overlay [data-token="tag"]{color:#569cd6;}
+      .code-overlay [data-token="attr"]{color:#dcdcaa;}
+      .code-overlay [data-token="call"]{color:#79c0ff;}
+      .code-overlay [data-token="const"]{color:#4fc1ff;}
 
       /* Dock */
       .dock-wrap{
@@ -800,8 +820,14 @@
         </div>
 
         <div id="bigEditor">
-          <div id="codeArea" class="code-area" contenteditable="true" spellcheck="false" style="display:none"></div>
-          <textarea id="textArea" style="display:none"></textarea>
+          <div id="codeShell" class="code-shell" style="display:none">
+            <div id="lineGutter" class="line-gutter"></div>
+            <div class="code-pane">
+              <pre id="codeOverlay" class="code-overlay"></pre>
+              <textarea id="codeInput" class="code-input" spellcheck="false"></textarea>
+            </div>
+          </div>
+          <textarea id="textArea" style="display:none" spellcheck="false"></textarea>
 
           <div style="display:flex;gap:8px;justify-content:flex-end">
             <button class="icon-btn" id="editorDiscard">Discard</button>
@@ -1118,7 +1144,10 @@
       const editorModal = document.getElementById("editorModal");
       const editorModalClose = document.getElementById("editorModalClose");
       const editorPath = document.getElementById("editorPath");
-      const codeArea = document.getElementById("codeArea");
+      const codeShell = document.getElementById("codeShell");
+      const codeOverlay = document.getElementById("codeOverlay");
+      const codeInput = document.getElementById("codeInput");
+      const lineGutter = document.getElementById("lineGutter");
       const textArea = document.getElementById("textArea");
       const editorSave = document.getElementById("editorSave");
       const editorDiscard = document.getElementById("editorDiscard");
@@ -3121,7 +3150,7 @@ async function changeVersion(version, opts = {}) {
         currentEditorPath = path;
         editorModal.classList.add('show'); editorModal.style.display='flex'; document.getElementById('editorPath').textContent=path;
         const lower=path.toLowerCase();
-        if(
+        const rich = (
           lower.endsWith('.js') ||
           lower.endsWith('.ts') ||
           lower.endsWith('.json') ||
@@ -3130,15 +3159,17 @@ async function changeVersion(version, opts = {}) {
           lower.endsWith('.html') ||
           lower.endsWith('.htm') ||
           lower.endsWith('.css')
-        ){
+        );
+        if(rich){
           textArea.style.display='none';
-          codeArea.style.display='block';
-          renderCodeAreaContent(content);
-          placeCaretAtEnd(codeArea);
-          codeArea.focus();
+          codeShell.style.display='flex';
+          codeInput.value = content;
+          codeInput.dataset.original = content;
+          renderHighlightedEditor(content);
+          codeInput.focus();
         }
         else {
-          codeArea.style.display='none';
+          codeShell.style.display='none';
           textArea.style.display='block';
           textArea.value=content;
           textArea.dataset.original=content;
@@ -3146,21 +3177,37 @@ async function changeVersion(version, opts = {}) {
         }
         if(!hasPerm('files_create')){ editorSave.classList.add('disabled'); }
       }
-      function closeEditorModal(){ editorModal.classList.remove('show'); editorModal.style.display='none'; document.getElementById('editorPath').textContent=''; codeArea.innerHTML=''; textArea.value=''; currentEditorPath=""; }
+      function closeEditorModal(){
+        editorModal.classList.remove('show');
+        editorModal.style.display='none';
+        document.getElementById('editorPath').textContent='';
+        codeOverlay.innerHTML='';
+        codeInput.value='';
+        codeShell.style.display='none';
+        textArea.value='';
+        lineGutter.innerHTML='';
+        currentEditorPath="";
+      }
       editorModalClose.addEventListener('click', closeEditorModal);
       editorDiscard.addEventListener('click', () => {
-        if (textArea.style.display!=='none') textArea.value = textArea.dataset.original || '';
-        else renderCodeAreaContent(codeArea.dataset.raw || '');
+        if (textArea.style.display!=='none'){
+          textArea.value = textArea.dataset.original || '';
+        } else {
+          const original = codeInput.dataset.original || '';
+          codeInput.value = original;
+          renderHighlightedEditor(original);
+        }
       });
-      editorSave.addEventListener('click', async () => {
+      async function performSave(){
         if (!hasPerm('files_create')) return alert('Unauthorized');
         const path = document.getElementById('editorPath').textContent; if(!path) return alert('No file open');
-        let contentToSave = (textArea.style.display!=='none') ? textArea.value : getTextFromContentEditable(codeArea);
+        let contentToSave = (textArea.style.display!=='none') ? textArea.value : codeInput.value;
         try{
           await apiWriteFile(path, contentToSave);
           setTimeout(()=> { loadExplorer(currentPath); alert('Saved'); closeEditorModal(); }, 150);
         }catch(err){ alert('Save failed: ' + (err.message || err)); }
-      });
+      }
+      editorSave.addEventListener('click', performSave);
 
       function run(){
         if (!hasPerm('server_start')) return alert('Unauthorized');
@@ -3257,6 +3304,13 @@ async function changeVersion(version, opts = {}) {
       });
 
       document.addEventListener('keydown', (e)=> {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='s'){
+          if (editorModal && editorModal.classList.contains('show')){
+            e.preventDefault();
+            performSave();
+            return;
+          }
+        }
         if (e.key==='Escape') {
           if (editorModal && editorModal.classList.contains('show')) { closeEditorModal(); return; }
           if (filesModal && filesModal.classList.contains('show')) { closeFilesModal(); return; }
@@ -3331,49 +3385,47 @@ async function changeVersion(version, opts = {}) {
           out=out.replace(kwRegex,m=> span('kw', m));
         }
         const lines = out.split(/\r\n|\r|\n/);
-        return lines.map(line => `<div>${line || '&nbsp;'}</div>`).join('');
+        return lines.map(line => `<div class="line">${line || '&nbsp;'}</div>`).join('');
       }
 
-      function renderCodeAreaContent(raw){
-        codeArea.dataset.raw = raw;
-        codeArea.innerHTML = highlightCode(raw, currentEditorPath || '');
+      function renderHighlightedEditor(raw){
+        codeOverlay.innerHTML = highlightCode(raw, currentEditorPath || '');
+        syncLineNumbers(raw);
+        syncScrollPositions();
       }
 
-      let codeAreaRefreshHandle = null;
-      function refreshCodeAreaFromEditable(){
-        if(codeAreaRefreshHandle) return;
-        codeAreaRefreshHandle = requestAnimationFrame(() => {
-          codeAreaRefreshHandle = null;
-          const raw = getTextFromContentEditable(codeArea);
-          renderCodeAreaContent(raw);
-          placeCaretAtEnd(codeArea);
+      function syncLineNumbers(raw){
+        const count = Math.max(1, (raw.match(/\n/g)||[]).length + 1);
+        lineGutter.innerHTML = Array.from({length:count}, (_,i)=>`<div>${i+1}</div>`).join('');
+      }
+
+      function syncScrollPositions(){
+        const top = codeInput.scrollTop;
+        codeOverlay.scrollTop = top;
+        lineGutter.scrollTop = top;
+      }
+
+      if (codeInput){
+        codeInput.addEventListener('input', ()=>{
+          renderHighlightedEditor(codeInput.value);
+        });
+        codeInput.addEventListener('scroll', syncScrollPositions);
+        codeInput.addEventListener('keydown', (e)=>{
+          if(e.key === 'Tab'){
+            e.preventDefault();
+            const start = codeInput.selectionStart;
+            const end = codeInput.selectionEnd;
+            const val = codeInput.value;
+            codeInput.value = `${val.slice(0,start)}  ${val.slice(end)}`;
+            codeInput.selectionStart = codeInput.selectionEnd = start + 2;
+            renderHighlightedEditor(codeInput.value);
+          }
         });
       }
 
       function highlightJS(src){
         return highlightCode(src, currentEditorPath || '');
       }
-
-      if (codeArea){
-        codeArea.addEventListener('paste', (e)=>{
-          if(codeArea.style.display==='none') return;
-          e.preventDefault();
-          const txt = (e.clipboardData || window.clipboardData)?.getData('text') || '';
-          renderCodeAreaContent(txt);
-          placeCaretAtEnd(codeArea);
-        });
-        codeArea.addEventListener('input', ()=>{
-          if(codeArea.style.display==='none') return;
-          refreshCodeAreaFromEditable();
-        });
-      }
-
-      function getTextFromContentEditable(el){
-        let txt=el.innerText||el.textContent||'';
-        txt=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-        return txt;
-      }
-      function placeCaretAtEnd(el){ el.focus(); if(window.getSelection&&document.createRange){ const r=document.createRange(); r.selectNodeContents(el); r.collapse(false); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);} }
       function startSimulatedProgress(from=0,to=90,duration=400){
         if(simInterval){ clearInterval(simInterval); simInterval=null; }
         let pct=from; const steps=Math.max(8,Math.floor(duration/80)); const step=(to-from)/steps;
