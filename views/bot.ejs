@@ -141,13 +141,14 @@
   gap:8px;
   background:rgba(96,165,250,0.08);
   border:1px solid rgba(96,165,250,0.25);
-  padding:8px 12px;
+  padding:6px 10px;
   border-radius:12px;
   color:#dbeafe;
   box-shadow:inset 0 0 0 1px rgba(96,165,250,0.15), 0 10px 30px rgba(0,0,0,0.35);
   cursor:pointer;
   user-select:none;
   transition:background .12s ease, border-color .12s ease, transform .12s ease;
+  align-self:flex-end;
 }
 .select-all-control:hover{ background:rgba(96,165,250,0.14); border-color:rgba(96,165,250,0.35); transform:translateY(-1px); }
 .select-all-control input{ display:none; }
@@ -165,7 +166,7 @@
   color:#e0f2fe;
   box-shadow:0 8px 18px rgba(37,99,235,0.35);
 }
-.select-all-label{ font-size:13px; letter-spacing:0.04em; text-transform:uppercase; color:#bfdbfe; }
+.select-all-label{ font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:#bfdbfe; }
 
 .bulk-delete{
   display:none;
@@ -205,6 +206,12 @@
 #breadcrumbs a{color:#60a5fa;text-decoration:none;}
 #breadcrumbs a:hover{text-decoration:underline;}
 .file-toolbar-actions{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  align-items:flex-end;
+}
+.file-action-row{
   display:flex;
   gap:10px;
   align-items:center;
@@ -913,21 +920,23 @@ textarea{
                 <div class="file-toolbar-meta">
                   <div class="file-toolbar-title">Working directory</div>
                   <div id="breadcrumbs"></div>
-                  <label class="select-all-control" for="selectAllToggle">
-                    <input type="checkbox" id="selectAllToggle" />
-                    <span class="select-all-checkbox"><i class="fa-solid fa-check"></i></span>
-                    <span class="select-all-label">Select all</span>
-                  </label>
                 </div>
               </div>
               <div class="file-toolbar-actions">
-                <label class="ghost-btn" id="uploadLabel" for="fileUploadModal" style="cursor:pointer"><i class="fa-solid fa-upload"></i> Upload</label>
-                <input id="fileUploadModal" type="file" />
-                <button class="ghost-btn" id="newBtn" onclick="createNew()" title="New file/folder"><i class="fa-solid fa-file-circle-plus"></i> New</button>
-                <button class="bulk-delete" id="bulkDeleteBtn" title="Delete selected">
-                  <i class="fa-solid fa-trash"></i>
-                  <span>Delete</span>
-                </button>
+                <div class="file-action-row">
+                  <label class="ghost-btn" id="uploadLabel" for="fileUploadModal" style="cursor:pointer"><i class="fa-solid fa-upload"></i> Upload</label>
+                  <input id="fileUploadModal" type="file" />
+                  <button class="ghost-btn" id="newBtn" onclick="createNew()" title="New file/folder"><i class="fa-solid fa-file-circle-plus"></i> New</button>
+                  <button class="bulk-delete" id="bulkDeleteBtn" title="Delete selected">
+                    <i class="fa-solid fa-trash"></i>
+                    <span>Delete</span>
+                  </button>
+                </div>
+                <label class="select-all-control" for="selectAllToggle">
+                  <input type="checkbox" id="selectAllToggle" />
+                  <span class="select-all-checkbox"><i class="fa-solid fa-check"></i></span>
+                  <span class="select-all-label">Select</span>
+                </label>
               </div>
             </div>
 
@@ -3228,7 +3237,33 @@ async function changeVersion(version, opts = {}) {
             const meta = document.createElement("div"); meta.className = "entry-meta"; meta.textContent = e.isDir ? "Folder" : "File";
             nameWrap.appendChild(nm); nameWrap.appendChild(meta);
             left.appendChild(icon); left.appendChild(nameWrap);
-            left.addEventListener('click', (ev) => { ev.stopPropagation(); toggleEntrySelection(li); });
+            let longPressTimeout = null;
+            let longPressTriggered = false;
+            left.addEventListener('mousedown', (ev) => {
+              if (ev.button !== 0) return;
+              longPressTriggered = false;
+              if (longPressTimeout) clearTimeout(longPressTimeout);
+              longPressTimeout = setTimeout(() => {
+                longPressTriggered = true;
+                clearSelection();
+                const rel = li.dataset.relPath;
+                if (rel) selectedEntries.add(rel);
+                updateSelectionUI();
+              }, 2000);
+            });
+            ['mouseup','mouseleave','mouseout'].forEach(evt => {
+              left.addEventListener(evt, () => {
+                if (longPressTimeout) {
+                  clearTimeout(longPressTimeout);
+                  longPressTimeout = null;
+                }
+              });
+            });
+            left.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              if (longPressTriggered) { longPressTriggered = false; return; }
+              toggleEntrySelection(li);
+            });
             const actions = document.createElement("div"); actions.className = "entry-actions";
             const moreBtn = document.createElement("button"); moreBtn.className = "more-btn"; moreBtn.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
             const menu = document.createElement("div"); menu.className = "more-menu";
