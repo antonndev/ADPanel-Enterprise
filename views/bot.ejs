@@ -292,7 +292,7 @@
         min-width:64px;
         background:#1a1d23;
         color:#7c8494;
-        padding:12px 18px 100px 12px;
+        padding:12px 18px 140px 12px;
         text-align:right;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size:15px;
@@ -316,13 +316,14 @@
         height:100%;
         scrollbar-width:none;
         -ms-overflow-style:none;
+        overscroll-behavior:contain;
       }
       .code-overlay,
       .code-input{
         position:absolute;
         inset:0;
         margin:0;
-        padding:12px 18px 100px 20px;
+        padding:12px 18px 120px 20px;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size:14px;
         line-height:1.6;
@@ -341,7 +342,7 @@
         margin:0;
         overflow:visible;
       }
-      .code-overlay::after{ content:""; display:block; height:48px; }
+      .code-overlay::after{ content:""; display:block; height:72px; }
       .code-overlay .line{ min-height:1.6em; }
       .code-input{
         z-index:2;
@@ -351,6 +352,13 @@
         overflow:visible;
       }
       .code-pane::-webkit-scrollbar{display:none;}
+      .code-spacer{
+        position:relative;
+        width:100%;
+        height:0;
+        pointer-events:none;
+        visibility:hidden;
+      }
       textarea{
         width:100%;
         max-height:60vh;
@@ -850,6 +858,7 @@
             <div class="code-pane">
               <pre id="codeOverlay" class="code-overlay"></pre>
               <textarea id="codeInput" class="code-input" spellcheck="false"></textarea>
+              <div id="codeSpacer" class="code-spacer" aria-hidden="true"></div>
             </div>
           </div>
           <textarea id="textArea" style="display:none" spellcheck="false"></textarea>
@@ -1174,6 +1183,7 @@
       const codeOverlay = document.getElementById("codeOverlay");
       const codeInput = document.getElementById("codeInput");
       const lineGutter = document.getElementById("lineGutter");
+      const codeSpacer = document.getElementById("codeSpacer");
       const textArea = document.getElementById("textArea");
       const editorSave = document.getElementById("editorSave");
       const editorDiscard = document.getElementById("editorDiscard");
@@ -3419,12 +3429,23 @@ async function changeVersion(version, opts = {}) {
       function renderHighlightedEditor(raw){
         codeOverlay.innerHTML = highlightCode(raw, currentEditorPath || '');
         syncLineNumbers(raw);
+        syncCodeSpacer();
         syncScrollPositions();
       }
 
       function syncLineNumbers(raw){
         const count = Math.max(1, (raw.match(/\n/g)||[]).length + 1);
         lineGutter.innerHTML = Array.from({length:count}, (_,i)=>`<div>${i+1}</div>`).join('');
+      }
+
+      function syncCodeSpacer(){
+        if(!codeSpacer) return;
+        const overlayHeight = codeOverlay ? codeOverlay.scrollHeight : 0;
+        const inputHeight = codeInput ? codeInput.scrollHeight : 0;
+        const base = codeShell ? codeShell.clientHeight : 0;
+        const buffer = 72;
+        const maxH = Math.max(base, overlayHeight, inputHeight) + buffer;
+        codeSpacer.style.height = `${maxH}px`;
       }
 
       function syncScrollPositions(){
