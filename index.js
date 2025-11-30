@@ -853,8 +853,24 @@ function saveTemplatesFile(list) {
 }
 
 function findTemplateById(id) {
-  const key = String(id || "").toLowerCase();
-  return loadTemplatesFile().find(t => String(t?.id || "").toLowerCase() === key) || null;
+  const norm = normalizeTemplateId(id);
+  const key = norm || String(id || "").trim().toLowerCase();
+
+  // Try to resolve using normalized IDs first so aliases like "node" map to the
+  // canonical "nodejs" template instead of falling back to legacy guesses.
+  const fromFile = loadTemplatesFile().find(t => {
+    const tplId = t?.id ?? "";
+    return normalizeTemplateId(tplId) === key || String(tplId).trim().toLowerCase() === key;
+  });
+  if (fromFile) return fromFile;
+
+  // Fall back to built-in defaults to keep core templates available even if the
+  // templates.json file was pruned or corrupted.
+  const fromDefaults = DEFAULT_TEMPLATES.find(t => {
+    const tplId = t?.id ?? "";
+    return normalizeTemplateId(tplId) === key || String(tplId).trim().toLowerCase() === key;
+  });
+  return fromDefaults || null;
 }
 
 function findServersUsingTemplate(id) {
