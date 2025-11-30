@@ -273,6 +273,13 @@
       #bigEditor{ margin-top:10px; display:flex; flex-direction:column; gap:10px; }
 
       /* Code area – line numbers */
+      :root{
+        --code-pad-top:16px;
+        --code-pad-bottom:96px;
+        --code-line-height:1.6;
+        --code-font-size:14px;
+      }
+
       .code-shell{
         width:100%;
         max-height:60vh;
@@ -295,11 +302,11 @@
         min-width:64px;
         background:#1a1d23;
         color:#7c8494;
-        padding:12px 18px 220px 12px;
+        padding:var(--code-pad-top) 18px calc(var(--code-pad-bottom) - 8px) 12px;
         text-align:right;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size:15px;
-        line-height:1.58;
+        font-size:var(--code-font-size);
+        line-height:var(--code-line-height);
         border-right:1px solid rgba(255,255,255,0.05);
         display:flex;
         flex-direction:column;
@@ -312,7 +319,7 @@
         overscroll-behavior:contain;
       }
       .line-gutter::-webkit-scrollbar{display:none;width:0;height:0;}
-      .line-gutter div{ padding:4px 0; }
+      .line-gutter div{ padding:0; height:calc(var(--code-line-height) * 1em); }
       .code-pane{
         position:relative;
         flex:1;
@@ -329,10 +336,10 @@
         position:absolute;
         inset:0;
         margin:0;
-        padding:16px 22px 220px 24px;
+        padding:var(--code-pad-top) 22px var(--code-pad-bottom) 24px;
         font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size:14px;
-        line-height:1.6;
+        font-size:var(--code-font-size);
+        line-height:var(--code-line-height);
         white-space:pre;
         border:0;
         outline:none;
@@ -348,7 +355,7 @@
         margin:0;
         overflow:visible;
       }
-      .code-overlay::after{ content:""; display:block; height:120px; }
+      .code-overlay::after{ content:""; display:block; height:40px; }
       .code-overlay .line{ min-height:1.6em; }
       .code-input{
         z-index:2;
@@ -3442,16 +3449,23 @@ async function changeVersion(version, opts = {}) {
         return Number.isFinite(lh) ? lh : 22;
       }
 
+      function getCodePadding(){
+        const styleTarget = codeOverlay || codeInput;
+        if(!styleTarget) return { top:16, bottom:96 };
+        const cs = getComputedStyle(styleTarget);
+        const top = parseFloat(cs.paddingTop) || 16;
+        const bottom = parseFloat(cs.paddingBottom) || 96;
+        return { top, bottom };
+      }
+
       function measureContentHeight(raw){
         const normalized = normalizeInput(raw || '');
         const lineCount = Math.max(1, normalized.split('\n').length);
         const lineHeight = getLineHeightPx();
-        const paddingTop = 16;
-        const paddingBottom = 220;
-        const overlayHeight = codeOverlay ? codeOverlay.scrollHeight : 0;
+        const { top: paddingTop, bottom: paddingBottom } = getCodePadding();
         const calculated = (lineCount * lineHeight) + paddingTop + paddingBottom;
-        const minShell = (codeShell ? codeShell.clientHeight : 0) + (lineHeight * 2);
-        return Math.max(minShell, calculated, overlayHeight + paddingBottom);
+        const minShell = (codeShell ? codeShell.clientHeight : 0) + (lineHeight * 1.5);
+        return Math.max(minShell, calculated);
       }
 
       function renderHighlightedEditor(raw){
