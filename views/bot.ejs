@@ -3468,7 +3468,7 @@ async function changeVersion(version, opts = {}) {
               } catch(err){ reject(err); }
             };
 
-            const waitForLoader = () => {
+            const whenLoaderReady = () => {
               const amdRequire = globalThis.monacoRequire || globalThis.require;
               if (amdRequire && typeof amdRequire === 'function' && typeof amdRequire.config === 'function'){
                 return bootMonaco(amdRequire);
@@ -3476,24 +3476,21 @@ async function changeVersion(version, opts = {}) {
               reject(new Error('Monaco AMD loader not available'));
             };
 
-            // If the AMD loader is already on the page and ready, start immediately
-            const amdReady = (globalThis.monacoRequire || globalThis.require);
-            if (amdReady && typeof amdReady === 'function' && typeof amdReady.config === 'function'){
-              return waitForLoader();
+            const preloaded = (globalThis.monacoRequire || globalThis.require);
+            if (preloaded && typeof preloaded === 'function' && typeof preloaded.config === 'function'){
+              return whenLoaderReady();
             }
 
-            // Otherwise, ensure the loader script exists and wait for it
             const ensureScript = loaderScript || document.createElement('script');
             ensureScript.id = ensureScript.id || 'monacoLoader';
             ensureScript.dataset.cdnBase = ensureScript.dataset.cdnBase || cdnBase;
             ensureScript.src = ensureScript.src || `${cdnBase}/min/vs/loader.min.js`;
-            ensureScript.onload = waitForLoader;
+            ensureScript.onload = whenLoaderReady;
             ensureScript.onerror = () => reject(new Error('Failed to load Monaco loader script'));
             if (!loaderScript) document.head.appendChild(ensureScript);
 
-            // Fallback: if the script is already "complete" but we missed onload
             if (loaderScript && (loaderScript.readyState === 'complete' || loaderScript.readyState === 'loaded')){
-              setTimeout(waitForLoader, 0);
+              setTimeout(whenLoaderReady, 0);
             }
           });
         }
@@ -3537,10 +3534,9 @@ async function changeVersion(version, opts = {}) {
         try {
           await loadMonaco();
 
+          const modelUri = monaco.Uri.file(path || `file-${Date.now()}`);
+          const model = monaco.editor.createModel(normalized, language, modelUri);
           const existingModel = monacoEditor ? monacoEditor.getModel() : null;
-          const model = monaco.editor.createModel(normalized, language);
-
-          if (existingModel) existingModel.dispose();
 
           if (!monacoEditor){
             monacoEditor = monaco.editor.create(monacoEditorContainer, {
@@ -3557,9 +3553,11 @@ async function changeVersion(version, opts = {}) {
             monacoEditor.setModel(model);
           }
 
+          if (existingModel && existingModel !== model) existingModel.dispose();
+
           monacoOriginalValue = normalized;
           monacoEditor.focus();
-          monacoEditor.layout();
+          requestAnimationFrame(()=> monacoEditor && monacoEditor.layout());
         } catch(err){
           console.error(err);
           if (monacoEditorContainer) monacoEditorContainer.style.display = 'none';
