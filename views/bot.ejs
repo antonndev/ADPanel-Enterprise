@@ -3449,54 +3449,51 @@ async function changeVersion(version, opts = {}) {
         return raw.replace(/\r\n?/g, '\n');
       }
 
-      function loadMonaco(callback){
-        if (window.monaco){ callback(); return; }
-        if(!monacoLoaderPromise){
+      function loadMonaco(){
+        if (window.monaco) return Promise.resolve(monaco);
+        if (!monacoLoaderPromise){
           monacoLoaderPromise = new Promise((resolve, reject)=>{
             const loaderScript = document.getElementById('monacoLoader');
             const cdnBase = (loaderScript && loaderScript.dataset && loaderScript.dataset.cdnBase) || 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.50.0';
 
-            const initMonaco = () => {
-              const amdRequire = globalThis.require || globalThis.monacoRequire;
-              if (typeof amdRequire !== 'function') {
-                reject(new Error('Monaco AMD loader not available'));
-                return;
-              }
+            const startMonaco = (amdRequire) => {
               try {
                 amdRequire.config({ paths: { 'vs': `${cdnBase}/min/vs` } });
                 amdRequire(['vs/editor/editor.main'], ()=>{
                   globalThis.monacoRequire = amdRequire;
                   monaco.editor.setTheme('vs-dark');
-                  resolve();
+                  resolve(monaco);
                 }, reject);
               } catch(err){ reject(err); }
             };
 
-            if (typeof globalThis.require === 'function') {
-              initMonaco();
+            const waitForLoader = () => {
+              const amdRequire = globalThis.monacoRequire || globalThis.require;
+              if (amdRequire && typeof amdRequire === 'function' && typeof amdRequire.config === 'function'){
+                startMonaco(amdRequire);
+              } else {
+                reject(new Error('Monaco AMD loader not available'));
+              }
+            };
+
+            if (loaderScript && (loaderScript.readyState === 'complete' || loaderScript.readyState === 'loaded')){
+              waitForLoader();
               return;
             }
 
-            if (loaderScript) {
-              loaderScript.addEventListener('load', initMonaco, { once: true });
-              loaderScript.addEventListener('error', () => reject(new Error('Failed to load Monaco loader script')), { once: true });
-            } else {
-              const fallbackScript = document.createElement('script');
-              fallbackScript.id = 'monacoLoader';
-              fallbackScript.dataset.cdnBase = cdnBase;
-              fallbackScript.src = `${cdnBase}/min/vs/loader.min.js`;
-              fallbackScript.onload = initMonaco;
-              fallbackScript.onerror = () => reject(new Error('Failed to load Monaco loader script'));
-              document.head.appendChild(fallbackScript);
-            }
+            const ensureScript = loaderScript || document.createElement('script');
+            ensureScript.id = ensureScript.id || 'monacoLoader';
+            ensureScript.dataset.cdnBase = ensureScript.dataset.cdnBase || cdnBase;
+            ensureScript.src = ensureScript.src || `${cdnBase}/min/vs/loader.min.js`;
+            ensureScript.onload = waitForLoader;
+            ensureScript.onerror = () => reject(new Error('Failed to load Monaco loader script'));
+            if (!loaderScript) document.head.appendChild(ensureScript);
           });
         }
-        monacoLoaderPromise.then(()=> callback()).catch(err=>{
+
+        return monacoLoaderPromise.catch(err => {
           console.error('Failed to load Monaco', err);
-          if (monacoEditorContainer) monacoEditorContainer.style.display = 'none';
-          codeShell.style.display = 'block';
-          textArea.style.display = 'block';
-          alert('Failed to load editor. Please try again.');
+          throw err;
         });
       }
 
@@ -3526,7 +3523,9 @@ async function changeVersion(version, opts = {}) {
         const normalized = normalizeInput(content || '');
         const language = getMonacoLanguage(path);
 
-        const initMonaco = () => {
+        try {
+          await loadMonaco();
+
           if (!monacoEditor){
             monacoEditor = monaco.editor.create(monacoEditorContainer, {
               value: normalized,
@@ -3541,15 +3540,22 @@ async function changeVersion(version, opts = {}) {
             monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => performSave());
           } else {
             const model = monacoEditor.getModel();
-            if (model){ monaco.editor.setModelLanguage(model, language); }
+            if (model && monaco.editor && monaco.editor.setModelLanguage){
+              monaco.editor.setModelLanguage(model, language);
+            }
             monacoEditor.setValue(normalized);
           }
 
           monacoOriginalValue = normalized;
           monacoEditor.focus();
-        };
-
-        loadMonaco(initMonaco);
+        } catch(err){
+          console.error(err);
+          if (monacoEditorContainer) monacoEditorContainer.style.display = 'none';
+          codeShell.style.display = 'block';
+          textArea.style.display = 'block';
+          textArea.value = normalized;
+          alert('Failed to load editor. Please try again.');
+        }
 
         if (!hasPerm('files_create')) {
           editorSave.classList.add('disabled');
