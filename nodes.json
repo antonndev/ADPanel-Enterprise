@@ -15,9 +15,9 @@
     "token": "vIPHd9pG39xMx4x7zvxKUGq0BhBC3Le8",
     "createdAt": 1763064086834,
     "api_port": 8080,
-    "port_ok": true,
-    "last_seen": 1764531685603,
-    "last_check": 1764531785623,
+    "port_ok": false,
+    "last_seen": 1764533478777,
+    "last_check": 1764690405156,
     "online": null,
     "buildConfig": {}
   }

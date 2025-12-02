@@ -1,7 +1,7 @@
 {
-  "type": "nodejs",
+  "type": "minecraft",
   "fork": "paper",
   "version": "1.21.8",
-  "start": "index.js",
+  "start": "server.jar",
   "createdAt": 1764513115720
 }

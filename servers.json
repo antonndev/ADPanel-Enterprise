@@ -23,8 +23,8 @@
   },
   {
     "name": "minecraftlocal",
-    "template": "nodejs",
-    "start": "index.js",
+    "template": "minecraft",
+    "start": "server.jar",
     "ip": "103.208.85.88",
     "port": 25568
   }
