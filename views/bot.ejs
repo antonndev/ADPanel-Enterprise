@@ -8,6 +8,7 @@
     <link id="favicon" rel="icon" type="image/png" href="/images/adpanel-dark.png" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script src="/socket.io/socket.io.js"></script>
+    <script id="monacoLoader" data-cdn-base="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.50.0" src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.50.0/min/vs/loader.min.js"></script>
 
     <style>
 :root{
@@ -367,6 +368,17 @@
   scrollbar-width:none;
 }
 .code-shell::-webkit-scrollbar{width:0;height:0;}
+
+.monaco-editor-container{
+  width:100%;
+  max-height:60vh;
+  height:60vh;
+  min-height:320px;
+  border-radius:14px;
+  overflow:hidden;
+  background:#1e1e1e;
+  box-shadow:0 18px 40px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.04);
+}
 
 /* Gutter */
 .line-gutter{
@@ -1003,6 +1015,7 @@ textarea{
             </div>
           </div>
           <textarea id="textArea" style="display:none" spellcheck="false"></textarea>
+          <div id="monacoEditor" class="monaco-editor-container" style="display:none"></div>
 
           <div style="display:flex;gap:8px;justify-content:flex-end">
             <button class="icon-btn" id="editorDiscard">Discard</button>
@@ -1328,6 +1341,7 @@ textarea{
       const lineGutter = document.getElementById("lineGutter");
       const codeSpacer = document.getElementById("codeSpacer");
       const textArea = document.getElementById("textArea");
+      const monacoEditorContainer = document.getElementById("monacoEditor");
       const editorSave = document.getElementById("editorSave");
       const editorDiscard = document.getElementById("editorDiscard");
 
@@ -1381,6 +1395,9 @@ textarea{
       const mrPluginInstallBtn = document.getElementById("mrPluginInstallBtn");
 
       let currentEditorPath = "";
+      let monacoEditor = null;
+      let monacoLoaderPromise = null;
+      let monacoOriginalValue = '';
 
       let selectedEntries = new Set();
 
@@ -3432,54 +3449,130 @@ async function changeVersion(version, opts = {}) {
         return raw.replace(/\r\n?/g, '\n');
       }
 
-async function openEditorModal(path, content) {
-  currentEditorPath = path;
+      function loadMonaco(){
+        if (window.monaco) return Promise.resolve(monaco);
 
-  // Deschide modalul
-  editorModal.classList.add('show');
-  editorModal.style.display = 'flex';
-  editorPath.textContent = path;
+        if (!monacoLoaderPromise){
+          monacoLoaderPromise = new Promise((resolve, reject)=>{
+            const loaderScript = document.getElementById('monacoLoader');
+            const cdnBase = (loaderScript && loaderScript.dataset && loaderScript.dataset.cdnBase) || 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.50.0';
 
-  const lower = path.toLowerCase();
-  const rich =
-    lower.endsWith('.js')   ||
-    lower.endsWith('.ts')   ||
-    lower.endsWith('.json') ||
-    lower.endsWith('.yml')  ||
-    lower.endsWith('.yaml') ||
-    lower.endsWith('.html') ||
-    lower.endsWith('.htm')  ||
-    lower.endsWith('.css');
+            const bootMonaco = (amdRequire) => {
+              try {
+                amdRequire.config({ paths: { 'vs': `${cdnBase}/min/vs` } });
+                amdRequire(['vs/editor/editor.main'], ()=>{
+                  globalThis.monacoRequire = amdRequire;
+                  monaco.editor.setTheme('vs-dark');
+                  resolve(monaco);
+                }, reject);
+              } catch(err){ reject(err); }
+            };
 
-  const normalized = normalizeInput(content || '');
+            const whenLoaderReady = () => {
+              const amdRequire = globalThis.monacoRequire || globalThis.require;
+              if (amdRequire && typeof amdRequire === 'function' && typeof amdRequire.config === 'function'){
+                return bootMonaco(amdRequire);
+              }
+              reject(new Error('Monaco AMD loader not available'));
+            };
 
-  if (rich) {
-    // editor "mare" cu line numbers
-    textArea.style.display = 'none';
-    codeShell.style.display = 'flex';
+            const preloaded = (globalThis.monacoRequire || globalThis.require);
+            if (preloaded && typeof preloaded === 'function' && typeof preloaded.config === 'function'){
+              return whenLoaderReady();
+            }
 
-    codeInput.value = normalized;
-    codeInput.dataset.original = normalized;
+            const ensureScript = loaderScript || document.createElement('script');
+            ensureScript.id = ensureScript.id || 'monacoLoader';
+            ensureScript.dataset.cdnBase = ensureScript.dataset.cdnBase || cdnBase;
+            ensureScript.src = ensureScript.src || `${cdnBase}/min/vs/loader.min.js`;
+            ensureScript.onload = whenLoaderReady;
+            ensureScript.onerror = () => reject(new Error('Failed to load Monaco loader script'));
+            if (!loaderScript) document.head.appendChild(ensureScript);
 
-    renderHighlightedEditor(normalized);
-    codeInput.focus();
-  } else {
-    // fallback textarea simplu
-    codeShell.style.display = 'none';
-    textArea.style.display = 'block';
+            if (loaderScript && (loaderScript.readyState === 'complete' || loaderScript.readyState === 'loaded')){
+              setTimeout(whenLoaderReady, 0);
+            }
+          });
+        }
 
-    textArea.value = normalized;
-    textArea.dataset.original = normalized;
+        return monacoLoaderPromise.catch(err => {
+          console.error('Failed to load Monaco', err);
+          throw err;
+        });
+      }
 
-    textArea.focus();
-  }
+      function getMonacoLanguage(path){
+        const lower = (path || '').toLowerCase();
+        if (lower.endsWith('.js') || lower.endsWith('.cjs') || lower.endsWith('.mjs')) return 'javascript';
+        if (lower.endsWith('.ts')) return 'typescript';
+        if (lower.endsWith('.py')) return 'python';
+        if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+        if (lower.endsWith('.css')) return 'css';
+        if (lower.endsWith('.json')) return 'json';
+        if (lower.endsWith('.yml') || lower.endsWith('.yaml')) return 'yaml';
+        return 'plaintext';
+      }
 
-  if (!hasPerm('files_create')) {
-    editorSave.classList.add('disabled');
-  } else {
-    editorSave.classList.remove('disabled');
-  }
-}
+      async function openEditorModal(path, content) {
+        currentEditorPath = path;
+
+        editorModal.classList.add('show');
+        editorModal.style.display = 'flex';
+        editorPath.textContent = path;
+
+        codeShell.style.display = 'none';
+        textArea.style.display = 'none';
+        if (monacoEditorContainer) monacoEditorContainer.style.display = 'block';
+
+        const normalized = normalizeInput(content || '');
+        const language = getMonacoLanguage(path);
+
+        // Preserve originals for fallback editors
+        textArea.dataset.original = normalized;
+        codeInput.dataset.original = normalized;
+
+        try {
+          await loadMonaco();
+
+          const modelUri = monaco.Uri.file(path || `file-${Date.now()}`);
+          const model = monaco.editor.createModel(normalized, language, modelUri);
+          const existingModel = monacoEditor ? monacoEditor.getModel() : null;
+
+          if (!monacoEditor){
+            monacoEditor = monaco.editor.create(monacoEditorContainer, {
+              model,
+              theme: 'vs-dark',
+              automaticLayout: true,
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              smoothScrolling: true,
+              fontFamily: 'Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+            });
+            monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => performSave());
+          } else {
+            monacoEditor.setModel(model);
+          }
+
+          if (existingModel && existingModel !== model) existingModel.dispose();
+
+          monacoOriginalValue = normalized;
+          monacoEditor.focus();
+          requestAnimationFrame(()=> monacoEditor && monacoEditor.layout());
+        } catch(err){
+          console.error(err);
+          if (monacoEditorContainer) monacoEditorContainer.style.display = 'none';
+          codeShell.style.display = 'block';
+          textArea.style.display = 'block';
+          textArea.value = normalized;
+          alert('Failed to load editor. Please try again.');
+        }
+
+        if (!hasPerm('files_create')) {
+          editorSave.classList.add('disabled');
+        } else {
+          editorSave.classList.remove('disabled');
+        }
+      }
       function closeEditorModal(){
         editorModal.classList.remove('show');
         editorModal.style.display='none';
@@ -3488,12 +3581,19 @@ async function openEditorModal(path, content) {
         codeInput.value='';
         codeShell.style.display='none';
         textArea.value='';
+        textArea.style.display='none';
         lineGutter.innerHTML='';
+        if (monacoEditorContainer) monacoEditorContainer.style.display = 'none';
+        if (monacoEditor) monacoEditor.setValue('');
+        monacoOriginalValue = '';
         currentEditorPath="";
       }
       editorModalClose.addEventListener('click', closeEditorModal);
       editorDiscard.addEventListener('click', () => {
-        if (textArea.style.display!=='none'){
+        if (monacoEditor){
+          monacoEditor.setValue(monacoOriginalValue || '');
+          monacoEditor.focus();
+        } else if (textArea.style.display!=='none'){
           textArea.value = textArea.dataset.original || '';
         } else {
           const original = codeInput.dataset.original || '';
@@ -3504,7 +3604,7 @@ async function openEditorModal(path, content) {
       async function performSave(){
         if (!hasPerm('files_create')) return alert('Unauthorized');
         const path = document.getElementById('editorPath').textContent; if(!path) return alert('No file open');
-        let contentToSave = (textArea.style.display!=='none') ? textArea.value : codeInput.value;
+        const contentToSave = monacoEditor ? monacoEditor.getValue() : ((textArea.style.display!=='none') ? textArea.value : codeInput.value);
         try{
           await apiWriteFile(path, contentToSave);
           setTimeout(()=> { loadExplorer(currentPath); alert('Saved'); closeEditorModal(); }, 150);
