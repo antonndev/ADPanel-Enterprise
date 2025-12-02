@@ -8,7 +8,7 @@
     <link id="favicon" rel="icon" type="image/png" href="/images/adpanel-dark.png" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.50.0/min/vs/loader.min.js"></script>
+    <script id="monacoLoader" data-cdn-base="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.50.0" src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.50.0/min/vs/loader.min.js"></script>
 
     <style>
 :root{
@@ -3453,17 +3453,49 @@ async function changeVersion(version, opts = {}) {
         if (window.monaco){ callback(); return; }
         if(!monacoLoaderPromise){
           monacoLoaderPromise = new Promise((resolve, reject)=>{
-            try {
-              require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.50.0/min/vs' } });
-              require(['vs/editor/editor.main'], ()=>{
-                monaco.editor.setTheme('vs-dark');
-                resolve();
-              }, reject);
-            } catch(err){ reject(err); }
+            const loaderScript = document.getElementById('monacoLoader');
+            const cdnBase = (loaderScript && loaderScript.dataset && loaderScript.dataset.cdnBase) || 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.50.0';
+
+            const initMonaco = () => {
+              const amdRequire = globalThis.require || globalThis.monacoRequire;
+              if (typeof amdRequire !== 'function') {
+                reject(new Error('Monaco AMD loader not available'));
+                return;
+              }
+              try {
+                amdRequire.config({ paths: { 'vs': `${cdnBase}/min/vs` } });
+                amdRequire(['vs/editor/editor.main'], ()=>{
+                  globalThis.monacoRequire = amdRequire;
+                  monaco.editor.setTheme('vs-dark');
+                  resolve();
+                }, reject);
+              } catch(err){ reject(err); }
+            };
+
+            if (typeof globalThis.require === 'function') {
+              initMonaco();
+              return;
+            }
+
+            if (loaderScript) {
+              loaderScript.addEventListener('load', initMonaco, { once: true });
+              loaderScript.addEventListener('error', () => reject(new Error('Failed to load Monaco loader script')), { once: true });
+            } else {
+              const fallbackScript = document.createElement('script');
+              fallbackScript.id = 'monacoLoader';
+              fallbackScript.dataset.cdnBase = cdnBase;
+              fallbackScript.src = `${cdnBase}/min/vs/loader.min.js`;
+              fallbackScript.onload = initMonaco;
+              fallbackScript.onerror = () => reject(new Error('Failed to load Monaco loader script'));
+              document.head.appendChild(fallbackScript);
+            }
           });
         }
         monacoLoaderPromise.then(()=> callback()).catch(err=>{
           console.error('Failed to load Monaco', err);
+          if (monacoEditorContainer) monacoEditorContainer.style.display = 'none';
+          codeShell.style.display = 'block';
+          textArea.style.display = 'block';
           alert('Failed to load editor. Please try again.');
         });
       }
