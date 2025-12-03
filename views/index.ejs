@@ -618,8 +618,7 @@
                const memory = bot.memory || {};
                const disk = bot.disk || {};
                const cpuPercent = bot.cpuPercent !== null && bot.cpuPercent !== undefined ? bot.cpuPercent : 0;
-               const statusClass = bot.status === 'online' ? 'status-online' : (bot.status === 'stopped' ? 'status-stopped' : 'status-unknown');
-               const statusLabel = bot.status === 'online' ? 'Online' : (bot.status === 'stopped' ? 'Stopped' : 'Status unknown');
+               const statusClass = bot.status === 'online' ? 'status-online' : 'status-stopped';
           %>
           <article class="bot-card <%= statusClass %>" data-bot-card data-name="<%= bot.name.toLowerCase() %>" onclick="location.href='/bot/<%= bot.name %>'" style="<%= coverStyle %>">
             <div class="bot-card__hero">
@@ -631,10 +630,7 @@
                     <h4><%= bot.name %></h4>
                     <p>Node: <%= bot.nodeName %></p>
                   </div>
-                  <div class="bot-card__status <%= statusClass %>">
-                    <span class="bot-card__status-dot"></span>
-                    <span class="bot-card__status-label"><%= statusLabel %></span>
-                  </div>
+                  <div class="bot-card__status <%= statusClass %>"><span class="bot-card__status-dot"></span></div>
                 </div>
                 <div class="bot-card__template-tag"><i class="fa-solid fa-cube"></i> <%= bot.templateName %></div>
                 <div class="bot-card__meta-row">
