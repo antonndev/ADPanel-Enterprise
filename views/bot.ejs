@@ -8,6 +8,7 @@
     <link id="favicon" rel="icon" type="image/png" href="/images/adpanel-dark.png" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs/loader.min.js"></script>
 
     <style>
 :root{
@@ -334,10 +335,10 @@
 
 /* Modern editor (larg) */
 #editorModal .modal{
-  width:92vw;
-  max-width:1280px;
-  max-height:90vh;
-  min-height: 0 !important;
+  width:95vw;
+  max-width:100vw;
+  max-height:91vh;
+  min-height: 91vh !important;
   display:flex;
   flex-direction:column;
   background:var(--bg);
@@ -353,9 +354,9 @@
 /* Code area – line numbers / editor core */
 .code-shell{
   width:100%;
-  max-height:60vh;
-  height:60vh;
-  min-height:320px;
+  max-height: 90vh;
+  height: 90vh;
+  min-height: 73vh;
   display:flex;
   align-items:stretch;
   background:#1e1e1e;
@@ -895,7 +896,7 @@ textarea{
         <div class="modal-header">
           <div style="display:flex;align-items:center;gap:8px">
             <div>
-              <div class="modal-title" id="filesModalTitle">File Manager — <span style="color:#fff;font-weight:700"><%= bot %></span></div>
+              <div class="modal-title" id="filesModalTitle">Managing <span style="color:#fff;font-weight:700"><%= bot %></span></div>
               <div style="color:var(--muted);font-size:13px">Explore and manage files</div>
             </div>
             <div id="progressWheel" class="progress-wheel hidden" title="Operation in progress">
@@ -985,7 +986,7 @@ textarea{
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editorModalTitle">
         <div class="editor-header">
           <div>
-            <div class="editor-title" id="editorModalTitle">Editor</div>
+            <div class="editor-title" id="editorModalTitle">ADPanel Editor</div>
             <div style="color:var(--muted);font-size:13px" id="editorPath"></div>
           </div>
           <div class="editor-actions">
@@ -993,22 +994,28 @@ textarea{
           </div>
         </div>
 
-        <div id="bigEditor">
-          <div id="codeShell" class="code-shell" style="display:none">
-            <div id="lineGutter" class="line-gutter"></div>
-            <div class="code-pane">
-              <pre id="codeOverlay" class="code-overlay"></pre>
-              <textarea id="codeInput" class="code-input" spellcheck="false"></textarea>
-              <div id="codeSpacer" class="code-spacer" aria-hidden="true"></div>
-            </div>
-          </div>
-          <textarea id="textArea" style="display:none" spellcheck="false"></textarea>
+<div id="bigEditor">
+  <div id="codeShell" class="code-shell" style="display:none">
+    <!-- NEW: Monaco container -->
+    <div id="monacoContainer" style="width:100%;height:100%;"></div>
 
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="icon-btn" id="editorDiscard">Discard</button>
-            <button class="icon-btn" id="editorSave">Save</button>
-          </div>
-        </div>
+    <!-- OLD custom editor păstrat ascuns ca fallback -->
+    <div id="lineGutter" class="line-gutter" style="display:none"></div>
+    <div class="code-pane" style="display:none">
+      <pre id="codeOverlay" class="code-overlay"></pre>
+      <textarea id="codeInput" class="code-input" spellcheck="false"></textarea>
+      <div id="codeSpacer" class="code-spacer" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <!-- Plain text fallback pentru fișiere necunoscute -->
+  <textarea id="textArea" style="display:none" spellcheck="false"></textarea>
+
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="icon-btn" id="editorDiscard">Discard</button>
+    <button class="icon-btn" id="editorSave">Save</button>
+  </div>
+</div>
       </div>
     </div>
 
@@ -1318,10 +1325,10 @@ textarea{
       const saveStartupBtn = document.getElementById("saveStartupBtn");
 
       const statusLabel = document.getElementById("statusLabel");
-      const editorModal = document.getElementById("editorModal");
       const editorModalClose = document.getElementById("editorModalClose");
       const editorPath = document.getElementById("editorPath");
       const codeShell = document.getElementById("codeShell");
+      let editorOriginalContent = "";
       const codePane = document.querySelector('.code-pane');
       const codeOverlay = document.getElementById("codeOverlay");
       const codeInput = document.getElementById("codeInput");
@@ -1330,6 +1337,16 @@ textarea{
       const textArea = document.getElementById("textArea");
       const editorSave = document.getElementById("editorSave");
       const editorDiscard = document.getElementById("editorDiscard");
+
+      const editorModal = document.getElementById("editorModal");
+
+// Monaco container
+const monacoContainer = document.getElementById("monacoContainer");
+
+// Monaco state
+let monacoEditor = null;
+let monacoLoaderPromise = null;
+
 
       const progressWheel = document.getElementById("progressWheel");
       const progressFill = document.getElementById("progressFill");
@@ -1357,6 +1374,7 @@ textarea{
       const miniRunBtn = document.getElementById("miniRunBtn");
       const miniStopBtn = document.getElementById("miniStopBtn");
       const storeBtn = document.getElementById("storeBtn");
+      let monacoIdleSuggestTimer = null;
 
       const storeModal = document.getElementById("storeModal");
       const storeModalClose = document.getElementById("storeModalClose");
@@ -1692,13 +1710,20 @@ function updateStoreVisibility(){
         }
       }
 
-      function closeStoreModal(){
-        if (!storeModal) return;
-        storeModal.classList.remove('show');
-        storeModal.style.display='none';
-        storeModal.setAttribute('aria-hidden','true');
-        storeCurrentProvider = null;
-      }
+function closeStoreModal(){
+  if (!storeModal) return;
+  storeModal.classList.remove('show');
+  storeModal.style.display='none';
+  storeModal.setAttribute('aria-hidden','true');
+  storeCurrentProvider = null;
+}
+
+if (storeModalClose) {
+  storeModalClose.onclick = (e) => {
+    e.preventDefault();
+    closeStoreModal();
+  };
+}
 
       function compareMcVersionsDesc(a, b){
         const pa = String(a).split('.').map(x => parseInt(x, 10) || 0);
@@ -3432,85 +3457,279 @@ async function changeVersion(version, opts = {}) {
         return raw.replace(/\r\n?/g, '\n');
       }
 
+      // === Monaco helpers ===
+function detectMonacoLanguage(path){
+  const lower = (path || "").toLowerCase();
+
+  if (lower.endsWith(".js"))   return "javascript";
+  if (lower.endsWith(".ts"))   return "typescript";
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".yml") || lower.endsWith(".yaml")) return "yaml";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
+  if (lower.endsWith(".css"))  return "css";
+  if (lower.endsWith(".java")) return "java";
+  if (lower.endsWith(".php"))  return "php";
+  if (lower.endsWith(".py"))   return "python";
+  if (lower.endsWith(".c"))    return "c";
+  if (lower.endsWith(".cpp") || lower.endsWith(".cc") || lower.endsWith(".cxx")) return "cpp";
+
+  return "plaintext";
+}
+
+function loadMonaco(){
+  // Dacă e deja încărcat
+  if (window.monaco) {
+    return Promise.resolve(window.monaco);
+  }
+
+  // Dacă deja îl încărcăm, reutilizăm promise-ul
+  if (monacoLoaderPromise) return monacoLoaderPromise;
+
+  monacoLoaderPromise = new Promise((resolve, reject) => {
+    if (typeof require === "undefined") {
+      reject(new Error("Monaco loader (require) nu este disponibil"));
+      return;
+    }
+
+    // Configurăm calea către vs/*
+    require.config({
+      paths: {
+        vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs"
+      }
+    });
+
+    // Încărcăm editorul
+    require(["vs/editor/editor.main"], function(m){
+      try {
+        m.editor.setTheme("vs-dark"); // poți schimba cu un alt theme dacă vrei
+      } catch (e) {}
+      resolve(m);
+    }, function(err){
+      console.error("Failed to load Monaco", err);
+      reject(err);
+    });
+  });
+
+  return monacoLoaderPromise;
+}
+
 async function openEditorModal(path, content) {
-  currentEditorPath = path;
+  currentEditorPath = path || "";
 
   // Deschide modalul
-  editorModal.classList.add('show');
-  editorModal.style.display = 'flex';
-  editorPath.textContent = path;
+  editorModal.classList.add("show");
+  editorModal.style.display = "flex";
+  editorPath.textContent = currentEditorPath;
 
-  const lower = path.toLowerCase();
-  const rich =
-    lower.endsWith('.js')   ||
-    lower.endsWith('.ts')   ||
-    lower.endsWith('.json') ||
-    lower.endsWith('.yml')  ||
-    lower.endsWith('.yaml') ||
-    lower.endsWith('.html') ||
-    lower.endsWith('.htm')  ||
-    lower.endsWith('.css');
+  const lower = currentEditorPath.toLowerCase();
+  const isRich =
+    lower.endsWith(".js")   ||
+    lower.endsWith(".ts")   ||
+    lower.endsWith(".json") ||
+    lower.endsWith(".yml")  ||
+    lower.endsWith(".yaml") ||
+    lower.endsWith(".html") ||
+    lower.endsWith(".htm")  ||
+    lower.endsWith(".css")  ||
+    lower.endsWith(".java") ||
+    lower.endsWith(".php")  ||
+    lower.endsWith(".py");
 
-  const normalized = normalizeInput(content || '');
+  const normalized = normalizeInput(content || "");
+  editorOriginalContent = normalized;
 
-  if (rich) {
-    // editor "mare" cu line numbers
-    textArea.style.display = 'none';
-    codeShell.style.display = 'flex';
-
-    codeInput.value = normalized;
-    codeInput.dataset.original = normalized;
-
-    renderHighlightedEditor(normalized);
-    codeInput.focus();
+  // Permisiuni la Save
+  if (!hasPerm("files_create")) {
+    editorSave.classList.add("disabled");
   } else {
-    // fallback textarea simplu
-    codeShell.style.display = 'none';
-    textArea.style.display = 'block';
+    editorSave.classList.remove("disabled");
+  }
 
+  if (isRich) {
+    // Monaco path
+    codeShell.style.display = "flex";
+
+    if (monacoContainer) monacoContainer.style.display = "block";
+
+    // ascundem vechiul editor custom
+    if (lineGutter) lineGutter.style.display = "none";
+    const legacyPane = document.querySelector("#codeShell .code-pane");
+    if (legacyPane) legacyPane.style.display = "none";
+
+    textArea.style.display = "none";
+
+    try {
+      const monaco = await loadMonaco();
+      if (!monacoContainer) {
+        console.error("monacoContainer missing");
+        return;
+      }
+
+      // Curățăm instanța anterioară
+      if (monacoEditor) {
+        monacoEditor.dispose();
+        monacoEditor = null;
+      }
+
+monacoEditor = monaco.editor.create(monacoContainer, {
+  value: normalized,
+  language: detectMonacoLanguage(currentEditorPath),
+  theme: "vs-dark",
+  automaticLayout: true,
+  fontSize: 14,
+  minimap: { enabled: false },
+
+  // ===== SUGESTII =====
+  // nu mai deschide sugestii în timp ce tastezi
+  quickSuggestions: false,                     // nu mai sugerează live
+  suggestOnTriggerCharacters: false,           // nu mai deschide la "." "<" etc
+  wordBasedSuggestions: "off",
+  parameterHints: { enabled: false },
+  snippetSuggestions: "none",
+
+  scrollBeyondLastLine: false,
+  scrollBeyondLastColumn: 0,
+
+  // ===== INDENTARE CA ÎN VS CODE =====
+  tabSize: 2,
+  insertSpaces: true,
+  detectIndentation: false,                    // forțăm 2 spații
+  autoIndent: "full",                          // IMPORTANT: smart indent (ca în VS Code)
+  formatOnType: true,                          // ajustează indentul când scrii (Enter, } etc.)
+  formatOnPaste: true
+});
+
+// după ce ai creat editorul:
+setupMonacoIdleSuggestions(monacoEditor);
+monacoEditor.focus();
+
+      // pentru Discard
+      monacoEditor.__originalValue = normalized;
+      monacoEditor.focus();
+    } catch (err) {
+      console.error("Failed to init Monaco:", err);
+
+      // fallback pe textarea dacă Monaco moare
+      codeShell.style.display = "none";
+      if (monacoContainer) monacoContainer.style.display = "none";
+
+      textArea.style.display = "block";
+      textArea.value = normalized;
+      textArea.dataset.original = normalized;
+      textArea.focus();
+    }
+  } else {
+    // Fallback simplu text
+    codeShell.style.display = "none";
+    if (monacoContainer) monacoContainer.style.display = "none";
+
+    textArea.style.display = "block";
     textArea.value = normalized;
     textArea.dataset.original = normalized;
-
     textArea.focus();
   }
+}
+function closeEditorModal() {
+  // ascunde modalul
+  editorModal.classList.remove('show');
+  editorModal.style.display = 'none';
+  editorPath.textContent = '';
 
-  if (!hasPerm('files_create')) {
-    editorSave.classList.add('disabled');
-  } else {
-    editorSave.classList.remove('disabled');
+  // oprește timer-ul de suggest (7s)
+  if (monacoIdleSuggestTimer) {
+    clearTimeout(monacoIdleSuggestTimer);
+    monacoIdleSuggestTimer = null;
+  }
+
+  // dacă există Monaco, îl distrugem
+  if (monacoEditor) {
+    const model = monacoEditor.getModel && monacoEditor.getModel();
+    if (model) model.dispose();
+    monacoEditor.dispose();
+    monacoEditor = null;
+  }
+
+  // curățăm și editorul vechi (ca fallback)
+  if (codeOverlay) codeOverlay.innerHTML = '';
+  if (codeInput) {
+    codeInput.value = '';
+    codeInput.dataset.original = '';
+  }
+  if (codeShell) codeShell.style.display = 'none';
+  if (textArea) {
+    textArea.value = '';
+    textArea.dataset.original = '';
+    textArea.style.display = 'none';
+  }
+  if (lineGutter) lineGutter.innerHTML = '';
+
+  editorOriginalContent = "";
+  currentEditorPath = '';
+}
+async function performSave() {
+  if (!hasPerm('files_create')) return alert('Unauthorized');
+
+  const path = document.getElementById('editorPath').textContent;
+  if (!path) return alert('No file open');
+
+  let contentToSave = "";
+
+  if (monacoEditor) {
+    // Monaco activ
+    contentToSave = monacoEditor.getValue();
+  } else if (textArea && textArea.style.display !== 'none') {
+    // fallback textarea simplu
+    contentToSave = textArea.value;
+  } else if (codeInput) {
+    // fallback editor vechi
+    contentToSave = codeInput.value;
+  }
+
+  try {
+    await apiWriteFile(path, contentToSave);
+    editorOriginalContent = contentToSave; // update "original"
+
+    setTimeout(() => {
+      loadExplorer(currentPath);
+      alert('Saved');
+      closeEditorModal();
+    }, 150);
+  } catch (err) {
+    alert('Save failed: ' + (err && err.message ? err.message : err));
   }
 }
-      function closeEditorModal(){
-        editorModal.classList.remove('show');
-        editorModal.style.display='none';
-        document.getElementById('editorPath').textContent='';
-        codeOverlay.innerHTML='';
-        codeInput.value='';
-        codeShell.style.display='none';
-        textArea.value='';
-        lineGutter.innerHTML='';
-        currentEditorPath="";
-      }
-      editorModalClose.addEventListener('click', closeEditorModal);
-      editorDiscard.addEventListener('click', () => {
-        if (textArea.style.display!=='none'){
-          textArea.value = textArea.dataset.original || '';
-        } else {
-          const original = codeInput.dataset.original || '';
-          codeInput.value = original;
-          renderHighlightedEditor(original);
-        }
-      });
-      async function performSave(){
-        if (!hasPerm('files_create')) return alert('Unauthorized');
-        const path = document.getElementById('editorPath').textContent; if(!path) return alert('No file open');
-        let contentToSave = (textArea.style.display!=='none') ? textArea.value : codeInput.value;
-        try{
-          await apiWriteFile(path, contentToSave);
-          setTimeout(()=> { loadExplorer(currentPath); alert('Saved'); closeEditorModal(); }, 150);
-        }catch(err){ alert('Save failed: ' + (err.message || err)); }
-      }
-      editorSave.addEventListener('click', performSave);
+
+// leagă butonul de performSave
+if (editorSave) {
+  editorSave.onclick = (e) => {
+    e.preventDefault();
+    performSave();
+  };
+}
+
+editorDiscard.addEventListener('click', () => {
+  // Dacă avem Monaco deschis
+  if (monacoEditor) {
+    monacoEditor.setValue(editorOriginalContent || "");
+    // optional: du-l la începutul fișierului
+    monacoEditor.setScrollTop(0);
+    monacoEditor.setScrollLeft(0);
+    return;
+  }
+
+  // Fallback: textarea simplu
+  if (textArea && textArea.style.display !== 'none') {
+    textArea.value = editorOriginalContent || textArea.dataset.original || '';
+    return;
+  }
+
+  // Fallback: editorul vechi cu codeInput + overlay
+  if (codeInput) {
+    const original = editorOriginalContent || codeInput.dataset.original || '';
+    codeInput.value = original;
+    renderHighlightedEditor(original);
+  }
+});
 
       function run(){
         if (!hasPerm('server_start')) return alert('Unauthorized');
@@ -3624,6 +3843,23 @@ async function openEditorModal(path, content) {
           if (progressPopup && progressPopup.style.display==='block') { closeProgressPopup(); return; }
         }
       });
+
+      // Toate butoanele cu .modal-close se comportă ca ESC
+document.querySelectorAll('.modal-close').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+
+    const escEvent = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      code: 'Escape',
+      keyCode: 27,
+      which: 27,
+      bubbles: true
+    });
+
+    document.dispatchEvent(escEvent);
+  });
+});
       document.addEventListener('click', () => { document.querySelectorAll('.more-menu.show').forEach(m => m.classList.remove('show')); });
 
       document.addEventListener('DOMContentLoaded', async ()=>{
@@ -3693,6 +3929,35 @@ async function openEditorModal(path, content) {
         return lines.map(line => `<div class="line">${line || '&nbsp;'}</div>`).join('');
       }
 
+      function setupMonacoIdleSuggestions(editor) {
+  if (!editor) return;
+
+  // resetăm orice timer vechi
+  if (monacoIdleSuggestTimer) {
+    clearTimeout(monacoIdleSuggestTimer);
+    monacoIdleSuggestTimer = null;
+  }
+
+  // când se schimbă conținutul (scrii ceva), resetăm timerul
+  editor.onDidChangeModelContent(() => {
+    if (monacoIdleSuggestTimer) {
+      clearTimeout(monacoIdleSuggestTimer);
+    }
+
+    monacoIdleSuggestTimer = setTimeout(() => {
+      // dacă între timp editorul a fost închis sau a pierdut focusul, nu mai facem nimic
+      if (!editor || (editor.isDisposed && editor.isDisposed()) || (editor.hasTextFocus && !editor.hasTextFocus())) {
+        return;
+      }
+
+      const action = editor.getAction && editor.getAction("editor.action.triggerSuggest");
+      if (action && action.run) {
+        action.run().catch(() => {});
+      }
+    }, 7000); // 7 secunde idle
+  });
+}
+
       function getLineHeightPx(){
         const lh = codeInput ? parseFloat(getComputedStyle(codeInput).lineHeight) : NaN;
         return Number.isFinite(lh) ? lh : 22;
@@ -3715,15 +3980,15 @@ async function openEditorModal(path, content) {
         return { top, bottom };
       }
 
-      function measureContentHeight(raw){
-        const normalized = normalizeInput(raw || '');
-        const lineCount = Math.max(1, normalized.split('\n').length);
-        const lineHeight = getLineHeightPx();
-        const { top: paddingTop, bottom: paddingBottom } = getCodePadding();
-        const calculated = (lineCount * lineHeight) + paddingTop + paddingBottom;
-        const minShell = (codeShell ? codeShell.clientHeight : 0) + (lineHeight * 1.5);
-        return Math.max(minShell, calculated);
-      }
+function measureContentHeight(raw){
+  const normalized = normalizeInput(raw || '');
+  const lineCount = Math.max(1, normalized.split('\n').length);
+  const lineHeight = getLineHeightPx();
+  const { top: paddingTop, bottom: paddingBottom } = getCodePadding();
+
+  // înălțime REALĂ a conținutului (fără artificii)
+  return (lineCount * lineHeight) + paddingTop + paddingBottom;
+}
 
       function renderHighlightedEditor(raw){
         const normalized = normalizeInput(raw || '');
@@ -3746,13 +4011,23 @@ async function openEditorModal(path, content) {
         lineGutter.innerHTML = Array.from({length:count}, (_,i)=>`<div>${i+1}</div>`).join('');
       }
 
-      function syncCodeSpacer(raw){
-        if(!codeSpacer) return;
-        const measured = measureContentHeight(raw || (codeInput ? codeInput.value : ''));
-        codeSpacer.style.height = `${measured}px`;
-        if (codeInput) codeInput.style.minHeight = `${measured}px`;
-        if (codeOverlay) codeOverlay.style.minHeight = `${measured}px`;
-      }
+function syncCodeSpacer(raw){
+  if (!codeSpacer || !codePane) return;
+
+  const measured   = measureContentHeight(raw || (codeInput ? codeInput.value : ''));
+  const paneHeight = codePane.clientHeight || 0;
+
+  // cheia: vrem ca scrollHeight = measured
+  // iar scrollHeight = paneHeight + spacerHeight
+  const spacerHeight = Math.max(0, measured - paneHeight);
+
+  // atât spațiu „invizibil” avem nevoie ca ultima linie să ajungă jos, fără extra
+  codeSpacer.style.height = `${spacerHeight}px`;
+
+  // opțional, dar ok să rămână:
+  if (codeInput)   codeInput.style.minHeight   = `${measured}px`;
+  if (codeOverlay) codeOverlay.style.minHeight = `${measured}px`;
+}
 
       function syncScrollPositions(){
         const top = codePane ? codePane.scrollTop : (codeInput ? codeInput.scrollTop : 0);

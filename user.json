@@ -1,14 +1,14 @@
 [
   {
-    "email": "admin@gmail.com",
-    "password": "$2b$10$8o862di95sPfVZcvsmksnedczr1YhYX2ivKX/sQYq38AINwrhtYjC",
-    "secret": "FBAXUSK6KJTWGRJ2ONJFCTLHFJECQR3B",
-    "admin": true
-  },
-  {
     "email": "pula@pula.pula",
     "password": "$2b$10$0PtkzKULqbPpP2tT8eFqx.tKienNT83pSJPP0z5VbMoexMH8jazlK",
     "secret": "HFRFCSRDLVYTMUKCJRXVC3JMJQ2HQPBD",
     "admin": false
+  },
+  {
+    "email": "admin@gmail.com",
+    "password": "$2b$10$NyUU/LJ/nX1RsFq.jLeV1.uZqDK9zESTKuqKdgh6elof/ikEXnIru",
+    "secret": "GURT4KR4OM7WQNSLNZACU5BUIVYCQIKG",
+    "admin": true
   }
 ]
