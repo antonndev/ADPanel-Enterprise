@@ -452,6 +452,34 @@ function removeServerIndexEntry(name) {
   saveServersIndex(list);
 }
 
+function toNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatMb(value) {
+  const n = toNumber(value);
+  if (n === null) return null;
+  if (Math.abs(n) >= 1024) return `${(n / 1024).toFixed(1)} GB`;
+  return `${n.toFixed(0)} MB`;
+}
+
+function formatResource(usedMb, totalMb) {
+  const total = toNumber(totalMb);
+  const used = toNumber(usedMb);
+  const percent = total ? Math.max(0, Math.min(100, Math.round(((used || 0) / total) * 100))) : null;
+  const usedLabel = used !== null ? formatMb(used) : null;
+  const totalLabel = total !== null ? formatMb(total) : null;
+  const label = totalLabel ? `${usedLabel || '0 MB'}/${totalLabel}` : (usedLabel || null);
+  return { percent, label };
+}
+
+function clampPercent(value) {
+  const n = toNumber(value);
+  if (n === null) return null;
+  return Math.max(0, Math.min(100, n));
+}
+
 // --- APP SETUP ---
 // --- SESSION (refactor ca să-l folosim și în socket.io)
 const sessionStore = new FileStore({
@@ -851,6 +879,7 @@ const DEFAULT_TEMPLATES = [
     id: "minecraft",
     name: "Minecraft",
     description: "You can create minecraft servers on this platform",
+    templateImage: "https://images.unsplash.com/photo-1501446529957-6226bd447c46?auto=format&fit=crop&w=1200&q=80",
     docker: {
       image: "itzg/minecraft-server",
       tag: "latest",
@@ -870,6 +899,7 @@ const DEFAULT_TEMPLATES = [
     id: "nodejs",
     name: "Node.js",
     description: "Run Node.JS applications",
+    templateImage: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
     docker: {
       image: "node",
       tag: "20-alpine",
@@ -884,6 +914,7 @@ const DEFAULT_TEMPLATES = [
     id: "vanilla",
     name: "Vanilla",
     description: "Choose what platform you want",
+    templateImage: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80",
     docker: {
       image: "alpine",
       tag: "latest",
@@ -968,13 +999,14 @@ app.get("/api/settings/templates", (req, res) => {
 });
 app.post("/api/settings/templates", (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
-  const { id, name, description, dockerImage, dockerTag } = req.body || {};
+  const { id, name, description, dockerImage, dockerTag, templateImage } = req.body || {};
 
   const cleanId = String(id || "").trim().toLowerCase();
   const cleanName = String(name || "").trim();
   const cleanDesc = String(description || "").trim();
   const cleanImage = String(dockerImage || "").trim();
   const cleanTag = String(dockerTag || "latest").trim() || "latest";
+  const cleanTemplateImage = String(templateImage || "").trim();
 
   if (!cleanId || !/^[a-z0-9_-]{2,60}$/.test(cleanId)) {
     return res.status(400).json({ error: "invalid id" });
@@ -990,6 +1022,7 @@ app.post("/api/settings/templates", (req, res) => {
     id: cleanId,
     name: cleanName,
     description: cleanDesc,
+    ...(cleanTemplateImage ? { templateImage: cleanTemplateImage } : {}),
     docker: {
       image: cleanImage,
       tag: cleanTag,
@@ -1408,7 +1441,43 @@ app.get("/", (req, res) => {
       botsToShow = unified.filter(n => access && access.includes(n));
     }
   }
-  res.render("index", { bots: botsToShow, isAdmin: safeUser ? safeUser.admin : false, user: safeUser, serverStartTime: SERVER_START });
+  const templates = loadTemplatesFile();
+  const templateMap = new Map(
+    templates.map(t => [normalizeTemplateId(t?.id), t])
+  );
+  const nodes = loadNodes();
+  const serverIndex = loadServersIndex();
+
+  const botCards = botsToShow.map((name) => {
+    const entry = serverIndex.find(e => e && e.name === name) || {};
+    const docker = entry?.docker || {};
+    const template = templateMap.get(normalizeTemplateId(entry.template)) || templateMap.get(entry.template) || null;
+    const node = entry.nodeId ? nodes.find(n => {
+      const key = String(entry.nodeId || '').toLowerCase();
+      return String(n.id || '').toLowerCase() === key || String(n.uuid || '').toLowerCase() === key || String(n.name || '').toLowerCase() === key;
+    }) : null;
+
+    const memory = formatResource(docker.memoryUsedMb ?? docker.memoryMbUsed, docker.memoryMb);
+    const disk = formatResource(docker.storageUsedMb ?? docker.storageMbUsed, docker.storageMb);
+    const cpuPercent = clampPercent(docker.cpuPercent ?? docker.cpus);
+
+    return {
+      name,
+      templateId: entry.template || null,
+      templateName: template?.name || entry.template || 'Custom template',
+      templateImage: template?.templateImage || template?.['template-image'] || null,
+      description: template?.description || 'Manage configuration, logs and deployments.',
+      nodeName: node?.name || (entry.nodeId ? entry.nodeId : 'Local node'),
+      ip: entry.ip || 'localhost',
+      port: entry.port || null,
+      cpu: cpuPercent !== null ? `${cpuPercent.toFixed(1)}%` : null,
+      cpuPercent,
+      memory,
+      disk
+    };
+  });
+
+  res.render("index", { bots: botCards, isAdmin: safeUser ? safeUser.admin : false, user: safeUser, serverStartTime: SERVER_START });
 });
 
 app.get("/settings", (req, res) => {
