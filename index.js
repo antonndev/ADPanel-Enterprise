@@ -480,6 +480,27 @@ function clampPercent(value) {
   return Math.max(0, Math.min(100, n));
 }
 
+function resolveBotStatus(entry) {
+  const docker = entry && entry.docker ? entry.docker : {};
+  const rawStatus = [
+    entry && entry.status,
+    docker.status,
+    docker.state,
+    docker.health,
+    docker.running === true ? "running" : null,
+    docker.running === false ? "stopped" : null
+  ]
+    .map(v => (v === undefined || v === null) ? null : String(v).toLowerCase())
+    .find(Boolean);
+
+  if (rawStatus) {
+    if (rawStatus.includes("running") || rawStatus.includes("online") || rawStatus.includes("up")) return "online";
+    if (rawStatus.includes("exited") || rawStatus.includes("stop") || rawStatus.includes("offline") || rawStatus.includes("down")) return "stopped";
+  }
+
+  return "unknown";
+}
+
 // --- APP SETUP ---
 // --- SESSION (refactor ca să-l folosim și în socket.io)
 const sessionStore = new FileStore({
@@ -1460,6 +1481,7 @@ app.get("/", (req, res) => {
     const memory = formatResource(docker.memoryUsedMb ?? docker.memoryMbUsed, docker.memoryMb);
     const disk = formatResource(docker.storageUsedMb ?? docker.storageMbUsed, docker.storageMb);
     const cpuPercent = clampPercent(docker.cpuPercent ?? docker.cpus);
+    const status = resolveBotStatus(entry);
 
     return {
       name,
@@ -1473,7 +1495,8 @@ app.get("/", (req, res) => {
       cpu: cpuPercent !== null ? `${cpuPercent.toFixed(1)}%` : null,
       cpuPercent,
       memory,
-      disk
+      disk,
+      status
     };
   });
 

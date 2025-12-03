@@ -618,20 +618,25 @@
                const memory = bot.memory || {};
                const disk = bot.disk || {};
                const cpuPercent = bot.cpuPercent !== null && bot.cpuPercent !== undefined ? bot.cpuPercent : 0;
+               const statusClass = bot.status === 'online' ? 'status-online' : (bot.status === 'stopped' ? 'status-stopped' : 'status-unknown');
+               const statusLabel = bot.status === 'online' ? 'Online' : (bot.status === 'stopped' ? 'Stopped' : 'Status unknown');
           %>
-          <article class="bot-card" data-bot-card data-name="<%= bot.name.toLowerCase() %>" onclick="location.href='/bot/<%= bot.name %>'" style="<%= coverStyle %>">
+          <article class="bot-card <%= statusClass %>" data-bot-card data-name="<%= bot.name.toLowerCase() %>" onclick="location.href='/bot/<%= bot.name %>'" style="<%= coverStyle %>">
             <div class="bot-card__hero">
               <div class="bot-card__hero-bg"></div>
               <div class="bot-card__hero-overlay"></div>
               <div class="bot-card__hero-content">
-                <div class="bot-card__eyebrow">Spell: <%= bot.templateName %></div>
                 <div class="bot-card__title-row">
                   <div>
                     <h4><%= bot.name %></h4>
                     <p>Node: <%= bot.nodeName %></p>
                   </div>
-                  <div class="bot-card__icon"><i class="fa-solid fa-server"></i></div>
+                  <div class="bot-card__status <%= statusClass %>">
+                    <span class="bot-card__status-dot"></span>
+                    <span class="bot-card__status-label"><%= statusLabel %></span>
+                  </div>
                 </div>
+                <div class="bot-card__template-tag"><i class="fa-solid fa-cube"></i> <%= bot.templateName %></div>
                 <div class="bot-card__meta-row">
                   <span><i class="fa-solid fa-globe"></i> <%= ipPort %></span>
                   <span><i class="fa-solid fa-cube"></i> <%= bot.templateId || 'Custom' %></span>
