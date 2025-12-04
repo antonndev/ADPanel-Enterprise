@@ -487,6 +487,8 @@ function resolveBotStatus(entry) {
     docker.status,
     docker.state,
     docker.health,
+    entry && entry.running === true ? "running" : null,
+    entry && entry.running === false ? "stopped" : null,
     docker.running === true ? "running" : null,
     docker.running === false ? "stopped" : null
   ]
@@ -498,7 +500,7 @@ function resolveBotStatus(entry) {
     if (rawStatus.includes("exited") || rawStatus.includes("stop") || rawStatus.includes("offline") || rawStatus.includes("down")) return "stopped";
   }
 
-  return "unknown";
+  return "stopped";
 }
 
 // --- APP SETUP ---
