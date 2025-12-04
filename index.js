@@ -481,6 +481,14 @@ function clampPercent(value) {
   return Math.max(0, Math.min(100, n));
 }
 
+function normalizeStatusLabel(value) {
+  const raw = (value === undefined || value === null) ? "" : String(value).toLowerCase();
+  if (!raw.trim()) return null;
+  if (raw.includes("running") || raw.includes("up") || raw.includes("online") || raw.includes("healthy")) return "online";
+  if (raw.includes("exit") || raw.includes("stop") || raw.includes("dead") || raw.includes("offline") || raw.includes("down") || raw.includes("paused")) return "stopped";
+  return null;
+}
+
 function userCanSeeBot(email, botName) {
   const user = email ? findUserByEmail(email) : null;
   if (user && user.admin) return true;
@@ -519,12 +527,24 @@ async function queryLiveStatus(botName) {
   }
 
   try {
-    const running = await isContainerRunning(botName);
-    return { name: botName, status: running ? "online" : "stopped" };
+    const status = await resolveLocalBotStatus(botName, entry);
+    return { name: botName, status };
   } catch (e) {
     console.warn('[dashboard-status] failed to check container', botName, e && e.message);
     return { name: botName, status: "stopped" };
   }
+}
+
+async function resolveLocalBotStatus(botName, entry) {
+  const fallbackLabel = entry && entry.status ? normalizeStatusLabel(entry.status) : null;
+
+  const dockerStatus = await resolveLocalDockerStatus(botName);
+  if (dockerStatus) return dockerStatus;
+
+  const reachable = await isPortReachable(entry && entry.port, entry && entry.ip);
+  if (reachable) return "online";
+
+  return fallbackLabel || "stopped";
 }
 
 async function emitDashboardStatuses(socket, bots) {
@@ -762,12 +782,64 @@ function docker(args, opts = {}) {
 }
 function dockerCollect(args, opts = {}) { return execCollect("docker", args, opts); }
 async function isContainerRunning(name) {
+  const status = await resolveLocalDockerStatus(name);
+  return status === "online";
+}
+async function resolveLocalDockerStatus(name) {
+  const target = String(name || "").trim();
+  if (!target) return null;
+
+  const inspectState = await inspectDockerState(target);
+  if (inspectState) return inspectState;
+
+  const psState = await dockerPsStatus(target);
+  if (psState) return psState;
+
+  return null;
+}
+
+async function inspectDockerState(name) {
   try {
-    const res = await dockerCollect(["inspect", "-f", "{{.State.Running}}", name]);
-    return String(res.out || "").trim() === "true";
-  } catch {
-    return false;
+    const res = await dockerCollect(["inspect", "-f", "{{json .State}}", name]);
+    const raw = String(res.out || "").trim();
+    if (!raw) return null;
+    const state = JSON.parse(raw);
+
+    if (typeof state.Running === "boolean") return state.Running ? "online" : "stopped";
+
+    const fromStatus = normalizeStatusLabel(state.Status) || normalizeStatusLabel(state.Health && state.Health.Status);
+    if (fromStatus) return fromStatus;
+  } catch (e) {}
+  return null;
+}
+
+async function dockerPsStatus(name) {
+  try {
+    const res = await dockerCollect(["ps", "-a", "--filter", `name=^/${name}$`, "--format", "{{.State}}|{{.Status}}"]);
+    const first = String(res.out || "").split("\n").find(Boolean);
+    if (!first) return null;
+    const [state, status] = first.split("|");
+    return normalizeStatusLabel(state) || normalizeStatusLabel(status);
+  } catch (e) {
+    return null;
   }
+}
+
+async function isPortReachable(port, host = "127.0.0.1") {
+  const numPort = Number(port);
+  if (!numPort || Number.isNaN(numPort)) return false;
+
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ port: numPort, host, timeout: 1200 });
+    const done = (result) => {
+      try { socket.destroy(); } catch (_) {}
+      resolve(result);
+    };
+
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+  });
 }
 function resolveNodeRuntimeImage(entry) {
   const runtime = entry && entry.runtime ? entry.runtime : {};
