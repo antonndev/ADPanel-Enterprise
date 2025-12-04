@@ -749,6 +749,43 @@
   </div>
 </label>
 
+<!-- Template image -->
+<label style="display:grid; gap:4px; font-weight:600">
+  Template image (URL)
+  <div style="position:relative; width:100%;">
+    <input
+      type="text"
+      id="ct_template_image"
+      placeholder=" https://example.com/cover.jpg"
+      style="
+        width:100%;
+        height:35px;
+        padding-right:35px;
+        outline:none;
+        background-color:rgba(37,37,37,0.85);
+        color:white;
+        border:1px solid rgba(255,255,255,0.08);
+        border-radius:5px;
+        transition:0.2s;
+      "
+      onfocus="this.style.border='1px solid #53a7f7'; this.style.boxShadow='0 0 6px #53a7f777';"
+      onblur="this.style.border='1px solid rgba(255,255,255,0.08)'; this.style.boxShadow='none';"
+    />
+    <i
+      class="fa-regular fa-image"
+      style="
+        position:absolute;
+        right:10px;
+        top:50%;
+        transform:translateY(-50%);
+        color:#aaa;
+        pointer-events:none;
+        transition:0.2s;
+      "
+    ></i>
+  </div>
+</label>
+
 <!-- Docker image -->
 <label style="display:grid; gap:4px; font-weight:600">
   Docker image
@@ -1095,11 +1132,12 @@
     const createTemplateCancel = document.getElementById('createTemplateCancel');
     const createTemplateSave = document.getElementById('createTemplateSave');
     const createTemplateFeedback = document.getElementById('createTemplateFeedback');
-    const ct_id = document.getElementById('ct_id');
-    const ct_name = document.getElementById('ct_name');
-    const ct_description = document.getElementById('ct_description');
-    const ct_image = document.getElementById('ct_image');
-    const ct_tag = document.getElementById('ct_tag');
+  const ct_id = document.getElementById('ct_id');
+  const ct_name = document.getElementById('ct_name');
+  const ct_description = document.getElementById('ct_description');
+  const ct_template_image = document.getElementById('ct_template_image');
+  const ct_image = document.getElementById('ct_image');
+  const ct_tag = document.getElementById('ct_tag');
 
     const serversListEl = document.getElementById('serversList');
     const createServerBtn = document.getElementById('createServerBtn');
@@ -1590,6 +1628,7 @@ function renderServers(list){
               <div class="template-card__meta">
                 <span><i class="fa-solid fa-cube"></i> ${escapeHtml((tpl.docker && tpl.docker.image) ? tpl.docker.image : 'Custom image')}</span>
                 <span><i class="fa-solid fa-tag"></i> ${escapeHtml((tpl.docker && tpl.docker.tag) ? tpl.docker.tag : 'latest')}</span>
+                ${tpl.templateImage ? `<span><i class="fa-regular fa-image"></i> Cover set</span>` : ''}
               </div>
             </div>
             <div class="template-card__actions">
@@ -1629,6 +1668,7 @@ function renderServers(list){
         ct_name.value = '';
         ct_id.value = '';
         ct_description.value = '';
+        ct_template_image.value = '';
         ct_image.value = '';
         ct_tag.value = 'latest';
         openTemplateModal();
@@ -1640,6 +1680,7 @@ function renderServers(list){
         const id = (ct_id.value || '').trim();
         const name = (ct_name.value || '').trim();
         const description = (ct_description.value || '').trim();
+        const templateImage = (ct_template_image.value || '').trim();
         const image = (ct_image.value || '').trim();
         const tag = (ct_tag.value || '').trim();
 
@@ -1654,7 +1695,7 @@ function renderServers(list){
           const res = await fetch('/api/settings/templates', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, name, description, dockerImage: image, dockerTag: tag })
+            body: JSON.stringify({ id, name, description, dockerImage: image, dockerTag: tag, templateImage })
           });
           const data = await res.json().catch(()=>({ error: 'Invalid response' }));
           if(!res.ok){

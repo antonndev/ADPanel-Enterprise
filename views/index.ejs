@@ -612,16 +612,53 @@
         </div>
 
         <div class="bot-grid" data-bot-grid>
-          <% bots.forEach(function(bot){ %>
-          <article class="bot-card" data-bot-card data-name="<%= bot.toLowerCase() %>" onclick="location.href='/bot/<%= bot %>'">
-            <div class="bot-card__icon">
-              <i class="fa-solid fa-server"></i>
+          <% bots.forEach(function(bot){
+               const coverStyle = bot.templateImage ? `--bot-cover:url('${String(bot.templateImage).replace(/'/g, "\\'")}');` : '';
+               const ipPort = bot.port ? `${bot.ip}:${bot.port}` : bot.ip;
+               const memory = bot.memory || {};
+               const disk = bot.disk || {};
+               const cpuPercent = bot.cpuPercent !== null && bot.cpuPercent !== undefined ? bot.cpuPercent : 0;
+               const statusClass = bot.status === 'online' ? 'status-online' : 'status-stopped';
+          %>
+          <article class="bot-card <%= statusClass %>" data-bot-card data-name="<%= bot.name.toLowerCase() %>" onclick="location.href='/bot/<%= bot.name %>'" style="<%= coverStyle %>">
+            <div class="bot-card__hero">
+              <div class="bot-card__hero-bg"></div>
+              <div class="bot-card__hero-overlay"></div>
+              <div class="bot-card__hero-content">
+                <div class="bot-card__title-row">
+                  <div>
+                    <h4><%= bot.name %></h4>
+                    <p>Node: <%= bot.nodeName %></p>
+                  </div>
+                  <div class="bot-card__status <%= statusClass %>"><span class="bot-card__status-dot"></span></div>
+                </div>
+                <div class="bot-card__template-tag"><i class="fa-solid fa-cube"></i> <%= bot.templateName %></div>
+                <div class="bot-card__meta-row">
+                  <span><i class="fa-solid fa-globe"></i> <%= ipPort %></span>
+                  <span><i class="fa-solid fa-cube"></i> <%= bot.templateId || 'Custom' %></span>
+                </div>
+              </div>
             </div>
-            <div class="bot-card__body">
-              <h4><%= bot %></h4>
-              <p>Manage configuration, logs and deployments.</p>
+
+            <div class="bot-card__stats">
+              <div class="bot-card__stat">
+                <div class="bot-card__stat-label">Memory <span><%= memory.label || '—' %></span></div>
+                <div class="bot-card__progress"><span style="width:<%= memory.percent != null ? memory.percent : 0 %>%"></span></div>
+              </div>
+              <div class="bot-card__stat">
+                <div class="bot-card__stat-label">Disk <span><%= disk.label || '—' %></span></div>
+                <div class="bot-card__progress"><span style="width:<%= disk.percent != null ? disk.percent : 0 %>%"></span></div>
+              </div>
+              <div class="bot-card__stat">
+                <div class="bot-card__stat-label">CPU <span><%= bot.cpu || '—' %></span></div>
+                <div class="bot-card__progress"><span style="width:<%= cpuPercent %>%"></span></div>
+              </div>
             </div>
-            <i class="fa-solid fa-arrow-right bot-card__chevron"></i>
+
+            <div class="bot-card__footer">
+              <div class="bot-card__footer-text">Click to view details</div>
+              <i class="fa-solid fa-arrow-right bot-card__chevron"></i>
+            </div>
           </article>
           <% }) %>
         </div>
@@ -823,6 +860,7 @@
       </div>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
       window.addEventListener('DOMContentLoaded', () => {
         // ---- Splash & layout ----
@@ -1536,6 +1574,34 @@
       }
       setInterval(updateUptime, 1000);
       updateUptime();
+
+      const statusSocket = window.io ? window.io({ transports: ['websocket'] }) : null;
+      const cards = Array.from(document.querySelectorAll('[data-bot-card]'));
+
+      function setStatusClasses(cardEl, statusEl, status) {
+        const classes = ['status-online', 'status-stopped'];
+        cardEl.classList.remove(...classes);
+        statusEl.classList.remove(...classes);
+        const className = status === 'online' ? 'status-online' : 'status-stopped';
+        cardEl.classList.add(className);
+        statusEl.classList.add(className);
+      }
+
+      function applyStatus(name, status) {
+        const card = cards.find((el) => el.dataset.name === name.toLowerCase());
+        if (!card) return;
+        const statusEl = card.querySelector('.bot-card__status');
+        if (!statusEl) return;
+        setStatusClasses(card, statusEl, status === 'online' ? 'online' : 'stopped');
+      }
+
+      if (statusSocket && cards.length) {
+        const botNames = cards.map((el) => el.dataset.name).filter(Boolean);
+        statusSocket.emit('dashboard:watch', { bots: botNames });
+        statusSocket.on('dashboard:status', (list = []) => {
+          list.forEach((item) => applyStatus(item.name || '', item.status));
+        });
+      }
     </script>
   </body>
 </html>

@@ -3,6 +3,7 @@
     "id": "minecraft",
     "name": "Minecraft",
     "description": "You can create minecraft servers on this platform",
+    "templateImage": "https://images.unsplash.com/photo-1501446529957-6226bd447c46?auto=format&fit=crop&w=1200&q=80",
     "docker": {
       "image": "itzg/minecraft-server",
       "tag": "latest",
@@ -24,6 +25,7 @@
     "id": "nodejs",
     "name": "Node.js",
     "description": "Run Node.JS applications",
+    "templateImage": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
     "docker": {
       "image": "node",
       "tag": "20-alpine",
@@ -42,6 +44,7 @@
     "id": "vanilla",
     "name": "Vanilla",
     "description": "Choose what platform you want",
+    "templateImage": "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80",
     "docker": {
       "image": "alpine",
       "tag": "latest",
