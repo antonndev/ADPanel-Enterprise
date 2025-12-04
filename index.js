@@ -482,6 +482,17 @@ function clampPercent(value) {
 
 function resolveBotStatus(entry) {
   const docker = entry && entry.docker ? entry.docker : {};
+
+  const explicitBoolean = [entry?.running, docker?.running, entry?.online, docker?.online]
+    .find(v => typeof v === "boolean");
+  if (typeof explicitBoolean === "boolean") return explicitBoolean ? "online" : "stopped";
+
+  const numericStatus = [entry?.status, docker?.status].find(v => typeof v === "number");
+  if (typeof numericStatus === "number") {
+    if (numericStatus === 1 || numericStatus === 200) return "online";
+    if (numericStatus === 0) return "stopped";
+  }
+
   const rawStatus = [
     entry && entry.status,
     docker.status,
@@ -496,7 +507,7 @@ function resolveBotStatus(entry) {
     .find(Boolean);
 
   if (rawStatus) {
-    if (rawStatus.includes("running") || rawStatus.includes("online") || rawStatus.includes("up")) return "online";
+    if (rawStatus.includes("running") || rawStatus.includes("online") || rawStatus.includes("up") || rawStatus.includes("healthy")) return "online";
     if (rawStatus.includes("exited") || rawStatus.includes("stop") || rawStatus.includes("offline") || rawStatus.includes("down")) return "stopped";
   }
 
