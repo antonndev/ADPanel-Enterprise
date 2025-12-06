@@ -579,38 +579,47 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  background: #9ca3af;
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.9), rgba(255,255,255,0.6) 35%, currentColor 75%);
   box-shadow: 0 0 0 4px rgba(255,255,255,0.08), 0 0 18px rgba(255,255,255,0.25);
   isolation: isolate;
-  animation: statusWave 1.4s ease-in-out infinite;
+  overflow: visible;
+  animation: statusPulse 1.6s ease-in-out infinite;
 }
 
 .bot-card__status-dot::before,
 .bot-card__status-dot::after {
   content: "";
   position: absolute;
-  inset: 0;
   border-radius: inherit;
-  background: currentColor;
-  opacity: 0.24;
+  inset: -6px;
   z-index: -1;
-  animation: statusRipple 1.8s ease-out infinite;
+}
+
+.bot-card__status-dot::before {
+  border: 2px solid currentColor;
+  opacity: 0.32;
+  animation: statusWaveRing 2.1s ease-out infinite;
+  box-shadow: 0 0 24px rgba(255,255,255,0.16);
 }
 
 .bot-card__status-dot::after {
-  animation-delay: 0.4s;
+  inset: -10px;
+  background: conic-gradient(from 180deg, rgba(255,255,255,0.18), transparent 30%, rgba(255,255,255,0.3) 55%, transparent 78%, rgba(255,255,255,0.22));
+  mask: radial-gradient(farthest-side, transparent 58%, #000 59%);
+  opacity: 0.85;
+  animation: statusOrbit 2.4s linear infinite;
 }
 
 .bot-card.status-online .bot-card__status-dot {
   color: #34d399;
-  background: radial-gradient(circle at 30% 30%, #bbf7d0, #34d399 60%);
-  box-shadow: 0 0 0 5px rgba(52,211,153,0.16), 0 0 22px rgba(52,211,153,0.4);
+  background: radial-gradient(circle at 35% 35%, #e6fff2 0%, #c1ffd7 30%, #34d399 70%);
+  box-shadow: 0 0 0 5px rgba(52,211,153,0.16), 0 0 22px rgba(52,211,153,0.45);
 }
 
 .bot-card.status-stopped .bot-card__status-dot {
   color: #ef4444;
-  background: radial-gradient(circle at 30% 30%, #fecdd3, #ef4444 60%);
-  box-shadow: 0 0 0 5px rgba(239,68,68,0.16), 0 0 22px rgba(239,68,68,0.4);
+  background: radial-gradient(circle at 35% 35%, #ffe4e8 0%, #ffc2cb 30%, #ef4444 70%);
+  box-shadow: 0 0 0 5px rgba(239,68,68,0.18), 0 0 22px rgba(239,68,68,0.45);
 }
 
 .bot-card__meta-row {
@@ -668,43 +677,57 @@ body {
 }
 
 .bot-card__stat-label {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   color: #e5edfb;
   font-size: 0.98rem;
   letter-spacing: -0.01em;
 }
 
-.bot-card__stat-label::before {
-  content: "";
+.bot-card__stat-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.06);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05), 0 8px 18px rgba(0,0,0,0.28);
-  color: #9ca3af;
-  font-family: "Font Awesome 6 Free";
-  font-weight: 900;
-  font-size: 13px;
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), 0 12px 22px rgba(0,0,0,0.26);
+  color: #cde0ff;
+  font-size: 14px;
 }
 
-.bot-card__stat:nth-child(1) .bot-card__stat-label::before { content: "\f538"; color: #22d3ee; }
-.bot-card__stat:nth-child(2) .bot-card__stat-label::before { content: "\f1c0"; color: #60a5fa; }
-.bot-card__stat:nth-child(3) .bot-card__stat-label::before { content: "\f2db"; color: #a855f7; }
+.bot-card__stat-icon--memory { color: #22d3ee; }
+.bot-card__stat-icon--disk { color: #60a5fa; }
+.bot-card__stat-icon--cpu { color: #a855f7; }
 
-.bot-card__stat-label span {
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.06);
-  color: #bfc9e6;
+.bot-card__stat-title {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #dfe9ff;
+  opacity: 0.9;
+}
+
+.bot-card__stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.04));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 20px rgba(0,0,0,0.25);
+  color: #c6d6f7;
   font-weight: 700;
-  font-size: 0.92rem;
-  letter-spacing: 0;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+}
+
+.bot-card__stat-chip i {
+  color: inherit;
+  opacity: 0.9;
 }
 
 .bot-card__progress {
@@ -803,16 +826,21 @@ body {
   line-height: 1.6;
 }
 
-@keyframes statusWave {
-  0% { transform: scale(0.96); filter: drop-shadow(0 0 0 rgba(52,211,153,0.0)); }
-  50% { transform: scale(1.05); filter: drop-shadow(0 0 10px rgba(255,255,255,0.18)); }
-  100% { transform: scale(0.96); filter: drop-shadow(0 0 0 rgba(52,211,153,0.0)); }
+@keyframes statusPulse {
+  0% { transform: scale(0.96); filter: drop-shadow(0 0 0 rgba(255,255,255,0)); }
+  50% { transform: scale(1.06); filter: drop-shadow(0 0 12px rgba(255,255,255,0.26)); }
+  100% { transform: scale(0.96); filter: drop-shadow(0 0 0 rgba(255,255,255,0)); }
 }
 
-@keyframes statusRipple {
-  0% { transform: scale(1); opacity: 0.24; }
+@keyframes statusWaveRing {
+  0% { transform: scale(0.9); opacity: 0.36; }
   70% { transform: scale(1.9); opacity: 0; }
   100% { transform: scale(1.9); opacity: 0; }
+}
+
+@keyframes statusOrbit {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 @keyframes progressSheen {
