@@ -1,0 +1,42 @@
+/* SOLID */
+@font-face {
+  font-family: "FA6-Solid";
+  src: url("/fonts/fa-solid-900.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* REGULAR */
+@font-face {
+  font-family: "FA6-Regular";
+  src: url("/fonts/fa-regular-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* LIGHT */
+@font-face {
+  font-family: "FA6-Light";
+  src: url("/fonts/fa-light-300.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* MAPARE CLASE FONT AWESOME */
+.fa-solid {
+  font-family: "FA6-Solid" !important;
+  font-weight: 900;
+}
+
+.fa-regular {
+  font-family: "FA6-Regular" !important;
+  font-weight: 400;
+}
+
+.fa-light {
+  font-family: "FA6-Light" !important;
+  font-weight: 300;
+}

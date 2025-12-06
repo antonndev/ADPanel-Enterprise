@@ -2,6 +2,7 @@
   {
     "id": "minecraft",
     "name": "Minecraft",
+    "templateImage": "https://files.catbox.moe/lb41c2.webp",
     "description": "You can create minecraft servers on this platform",
     "docker": {
       "image": "itzg/minecraft-server",
@@ -23,6 +24,7 @@
   {
     "id": "nodejs",
     "name": "Node.js",
+    "templateImage": "https://files.catbox.moe/w3392k.webp",
     "description": "Run Node.JS applications",
     "docker": {
       "image": "node",
