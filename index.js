@@ -1,3 +1,4 @@
+
 /* eslint-disable */
 const express = require("express");
 const path = require("path");
@@ -17,6 +18,7 @@ const httpMod = require("http");
 const { URL } = require("url");
 const lineBuffers  = {};            // name -> string (buffer pentru linii neterminate)
 const logProcesses = {};            // name -> child process (docker logs -f)
+const dashboardWatchers = new Map(); // socket.id -> interval handle
 
 let bcrypt;
 try {
@@ -452,6 +454,170 @@ function removeServerIndexEntry(name) {
   saveServersIndex(list);
 }
 
+function toNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatMb(value) {
+  const n = toNumber(value);
+  if (n === null) return null;
+  if (Math.abs(n) >= 1024) return `${(n / 1024).toFixed(1)} GB`;
+  return `${n.toFixed(0)} MB`;
+}
+
+function formatResource(usedMb, totalMb) {
+  const total = toNumber(totalMb);
+  const used = toNumber(usedMb);
+  const percent = total ? Math.max(0, Math.min(100, Math.round(((used || 0) / total) * 100))) : null;
+  const usedLabel = used !== null ? formatMb(used) : null;
+  const totalLabel = total !== null ? formatMb(total) : null;
+  const label = totalLabel ? `${usedLabel || '0 MB'}/${totalLabel}` : (usedLabel || null);
+  return { percent, label };
+}
+
+function clampPercent(value) {
+  const n = toNumber(value);
+  if (n === null) return null;
+  return Math.max(0, Math.min(100, n));
+}
+
+function normalizeStatusLabel(value) {
+  const raw = (value === undefined || value === null) ? "" : String(value).toLowerCase();
+  if (!raw.trim()) return null;
+  if (raw.includes("running") || raw.includes("up") || raw.includes("online") || raw.includes("healthy")) return "online";
+  if (raw.includes("exit") || raw.includes("stop") || raw.includes("dead") || raw.includes("offline") || raw.includes("down") || raw.includes("paused")) return "stopped";
+  return null;
+}
+
+function userCanSeeBot(email, botName) {
+  const user = email ? findUserByEmail(email) : null;
+  if (user && user.admin) return true;
+  const access = getAccessListForEmail(email);
+  if (!access || access.length === 0) return false;
+  if (access.includes("all")) return true;
+  return access.includes(botName);
+}
+
+async function queryLiveStatus(botName) {
+  const entry = findServer(botName) || {};
+
+  if (isRemoteEntry(entry)) {
+    const node = findNodeByIdOrName(entry.nodeId);
+    if (!node) return { name: botName, status: "stopped" };
+    const baseUrl = buildNodeBaseUrl(node.address, node.api_port || 8080);
+    if (!baseUrl) return { name: botName, status: "stopped" };
+
+    try {
+      const headers = nodeAuthHeadersFor(node, true);
+      const { status, json } = await httpRequestJson(
+        `${baseUrl}/v1/servers/${encodeURIComponent(botName)}`,
+        "GET",
+        headers,
+        null,
+        8000
+      );
+
+      if (status === 200 && json) {
+        const merged = Object.assign({}, entry, json, { docker: json?.docker || json });
+        return { name: botName, status: resolveBotStatus(merged) };
+      }
+    } catch (_) {}
+
+    return { name: botName, status: "stopped" };
+  }
+
+  try {
+    const status = await resolveLocalBotStatus(botName, entry);
+    return { name: botName, status };
+  } catch (e) {
+    console.warn('[dashboard-status] failed to check container', botName, e && e.message);
+    return { name: botName, status: "stopped" };
+  }
+}
+
+async function resolveLocalBotStatus(botName, entry) {
+  const fallbackLabel = entry && entry.status ? normalizeStatusLabel(entry.status) : null;
+
+  const dockerStatus = await resolveLocalDockerStatus(botName);
+  if (dockerStatus) return dockerStatus;
+
+  const reachable = await isPortReachable(entry && entry.port, entry && entry.ip);
+  if (reachable) return "online";
+
+  return fallbackLabel || "stopped";
+}
+
+async function emitDashboardStatuses(socket, bots) {
+  try {
+    const statuses = await Promise.all(bots.map((name) => queryLiveStatus(name)));
+    socket.emit("dashboard:status", statuses);
+  } catch (e) {
+    console.warn('[dashboard-status] emit failed', e && e.message);
+  }
+}
+
+function startDashboardWatcher(socket, bots) {
+  const unique = Array.from(new Set((bots || []).map((b) => String(b || "").toLowerCase()).filter(Boolean)));
+  if (!unique.length) return;
+
+  stopDashboardWatcher(socket);
+
+  const runner = () => {
+    if (!socket.connected) {
+      stopDashboardWatcher(socket);
+      return;
+    }
+    emitDashboardStatuses(socket, unique);
+  };
+
+  runner();
+  const handle = setInterval(runner, 10000);
+  dashboardWatchers.set(socket.id, handle);
+}
+
+function stopDashboardWatcher(socket) {
+  const h = dashboardWatchers.get(socket.id);
+  if (h) {
+    try { clearInterval(h); } catch (_) {}
+    dashboardWatchers.delete(socket.id);
+  }
+}
+
+function resolveBotStatus(entry) {
+  const docker = entry && entry.docker ? entry.docker : {};
+
+  const explicitBoolean = [entry?.running, docker?.running, entry?.online, docker?.online]
+    .find(v => typeof v === "boolean");
+  if (typeof explicitBoolean === "boolean") return explicitBoolean ? "online" : "stopped";
+
+  const numericStatus = [entry?.status, docker?.status].find(v => typeof v === "number");
+  if (typeof numericStatus === "number") {
+    if (numericStatus === 1 || numericStatus === 200) return "online";
+    if (numericStatus === 0) return "stopped";
+  }
+
+  const rawStatus = [
+    entry && entry.status,
+    docker.status,
+    docker.state,
+    docker.health,
+    entry && entry.running === true ? "running" : null,
+    entry && entry.running === false ? "stopped" : null,
+    docker.running === true ? "running" : null,
+    docker.running === false ? "stopped" : null
+  ]
+    .map(v => (v === undefined || v === null) ? null : String(v).toLowerCase())
+    .find(Boolean);
+
+  if (rawStatus) {
+    if (rawStatus.includes("running") || rawStatus.includes("online") || rawStatus.includes("up") || rawStatus.includes("healthy")) return "online";
+    if (rawStatus.includes("exited") || rawStatus.includes("stop") || rawStatus.includes("offline") || rawStatus.includes("down")) return "stopped";
+  }
+
+  return "stopped";
+}
+
 // --- APP SETUP ---
 // --- SESSION (refactor ca să-l folosim și în socket.io)
 const sessionStore = new FileStore({
@@ -617,12 +783,64 @@ function docker(args, opts = {}) {
 }
 function dockerCollect(args, opts = {}) { return execCollect("docker", args, opts); }
 async function isContainerRunning(name) {
+  const status = await resolveLocalDockerStatus(name);
+  return status === "online";
+}
+async function resolveLocalDockerStatus(name) {
+  const target = String(name || "").trim();
+  if (!target) return null;
+
+  const inspectState = await inspectDockerState(target);
+  if (inspectState) return inspectState;
+
+  const psState = await dockerPsStatus(target);
+  if (psState) return psState;
+
+  return null;
+}
+
+async function inspectDockerState(name) {
   try {
-    const res = await dockerCollect(["inspect", "-f", "{{.State.Running}}", name]);
-    return String(res.out || "").trim() === "true";
-  } catch {
-    return false;
+    const res = await dockerCollect(["inspect", "-f", "{{json .State}}", name]);
+    const raw = String(res.out || "").trim();
+    if (!raw) return null;
+    const state = JSON.parse(raw);
+
+    if (typeof state.Running === "boolean") return state.Running ? "online" : "stopped";
+
+    const fromStatus = normalizeStatusLabel(state.Status) || normalizeStatusLabel(state.Health && state.Health.Status);
+    if (fromStatus) return fromStatus;
+  } catch (e) {}
+  return null;
+}
+
+async function dockerPsStatus(name) {
+  try {
+    const res = await dockerCollect(["ps", "-a", "--filter", `name=^/${name}$`, "--format", "{{.State}}|{{.Status}}"]);
+    const first = String(res.out || "").split("\n").find(Boolean);
+    if (!first) return null;
+    const [state, status] = first.split("|");
+    return normalizeStatusLabel(state) || normalizeStatusLabel(status);
+  } catch (e) {
+    return null;
   }
+}
+
+async function isPortReachable(port, host = "127.0.0.1") {
+  const numPort = Number(port);
+  if (!numPort || Number.isNaN(numPort)) return false;
+
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ port: numPort, host, timeout: 1200 });
+    const done = (result) => {
+      try { socket.destroy(); } catch (_) {}
+      resolve(result);
+    };
+
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+  });
 }
 function resolveNodeRuntimeImage(entry) {
   const runtime = entry && entry.runtime ? entry.runtime : {};
@@ -851,6 +1069,7 @@ const DEFAULT_TEMPLATES = [
     id: "minecraft",
     name: "Minecraft",
     description: "You can create minecraft servers on this platform",
+    templateImage: "https://images.unsplash.com/photo-1501446529957-6226bd447c46?auto=format&fit=crop&w=1200&q=80",
     docker: {
       image: "itzg/minecraft-server",
       tag: "latest",
@@ -870,6 +1089,7 @@ const DEFAULT_TEMPLATES = [
     id: "nodejs",
     name: "Node.js",
     description: "Run Node.JS applications",
+    templateImage: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
     docker: {
       image: "node",
       tag: "20-alpine",
@@ -884,6 +1104,7 @@ const DEFAULT_TEMPLATES = [
     id: "vanilla",
     name: "Vanilla",
     description: "Choose what platform you want",
+    templateImage: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80",
     docker: {
       image: "alpine",
       tag: "latest",
@@ -968,13 +1189,14 @@ app.get("/api/settings/templates", (req, res) => {
 });
 app.post("/api/settings/templates", (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "not authorized" });
-  const { id, name, description, dockerImage, dockerTag } = req.body || {};
+  const { id, name, description, dockerImage, dockerTag, templateImage } = req.body || {};
 
   const cleanId = String(id || "").trim().toLowerCase();
   const cleanName = String(name || "").trim();
   const cleanDesc = String(description || "").trim();
   const cleanImage = String(dockerImage || "").trim();
   const cleanTag = String(dockerTag || "latest").trim() || "latest";
+  const cleanTemplateImage = String(templateImage || "").trim();
 
   if (!cleanId || !/^[a-z0-9_-]{2,60}$/.test(cleanId)) {
     return res.status(400).json({ error: "invalid id" });
@@ -990,6 +1212,7 @@ app.post("/api/settings/templates", (req, res) => {
     id: cleanId,
     name: cleanName,
     description: cleanDesc,
+    ...(cleanTemplateImage ? { templateImage: cleanTemplateImage } : {}),
     docker: {
       image: cleanImage,
       tag: cleanTag,
@@ -1380,35 +1603,113 @@ app.use((req, res, next) => {
 });
 
 // --- DASHBOARD ---
-app.get("/", (req, res) => {
-  const allBotsLocal = fs.existsSync(BOTS_DIR) ? fs.readdirSync(BOTS_DIR) : [];
-  const localFolders = allBotsLocal.filter(n => {
-    try { return fs.statSync(path.join(BOTS_DIR, n)).isDirectory(); } catch { return false; }
-  });
+app.get("/", async (req, res) => {
+  try {
+    const allBotsLocal = fs.existsSync(BOTS_DIR) ? fs.readdirSync(BOTS_DIR) : [];
+    const localFolders = allBotsLocal.filter(n => {
+      try { return fs.statSync(path.join(BOTS_DIR, n)).isDirectory(); } catch { return false; }
+    });
 
-  // adaugă și cele indexate în servers.json (remote + local)
-  const idx = loadServersIndex();
-  const indexedNames = (Array.isArray(idx) ? idx : []).map(e => e && e.name).filter(Boolean);
+    const idx = loadServersIndex();
+    const indexedNames = (Array.isArray(idx) ? idx : []).map(e => e && e.name).filter(Boolean);
 
-  // unificare fără dubluri
-  const set = new Set([...localFolders, ...indexedNames]);
-  const unified = Array.from(set);
+    const set = new Set([...localFolders, ...indexedNames]);
+    const unified = Array.from(set);
 
-  const userObj = req.session && req.session.user ? findUserByEmail(req.session.user) : null;
-  const safeUser = userObj ? { email: userObj.email, admin: !!userObj.admin } : null;
+    const email = req.session && req.session.user ? req.session.user : null;
+    const userObj = email ? findUserByEmail(email) : null;
+    const safeUser = userObj ? { email: userObj.email, admin: !!userObj.admin } : null;
 
-  let botsToShow = [];
-  if (safeUser && safeUser.admin) {
-    botsToShow = unified;
-  } else {
-    const access = getAccessListForEmail(req.session.user);
-    if (access && access.includes("all")) {
+    let botsToShow = [];
+    if (safeUser && safeUser.admin) {
       botsToShow = unified;
     } else {
-      botsToShow = unified.filter(n => access && access.includes(n));
+      const access = email ? getAccessListForEmail(email) : [];
+      if (access && access.includes("all")) {
+        botsToShow = unified;
+      } else {
+        botsToShow = unified.filter(n => access && access.includes(n));
+      }
     }
+
+    const templates = loadTemplatesFile() || [];
+    const templateMap = new Map(
+      templates.map(t => [normalizeTemplateId(t?.id), t])
+    );
+    const nodes = loadNodes() || [];
+    const serverIndex = loadServersIndex() || [];
+
+    // ==== STATUS LIVE DIN DOCKER / NODE (cu safety) ====
+    const liveStatusMap = {};
+
+    const queryWithTimeout = (name, ms = 1500) =>
+      Promise.race([
+        queryLiveStatus(name),
+        new Promise(resolve => setTimeout(() => resolve({ status: "stopped" }), ms)),
+      ]);
+
+    await Promise.all(
+      botsToShow.map(async (name) => {
+        try {
+          const { status } = await queryWithTimeout(name);
+          liveStatusMap[name.toLowerCase()] = status || "stopped";
+        } catch (err) {
+          console.error("queryLiveStatus error for", name, err);
+          liveStatusMap[name.toLowerCase()] = "stopped";
+        }
+      })
+    );
+    // ====================================================
+
+    const botCards = botsToShow.map((name) => {
+      const entry = serverIndex.find(e => e && e.name === name) || {};
+      const docker = entry?.docker || {};
+      const template =
+        templateMap.get(normalizeTemplateId(entry.template)) ||
+        templateMap.get(entry.template) ||
+        null;
+
+      const node = entry.nodeId ? nodes.find(n => {
+        const key = String(entry.nodeId || '').toLowerCase();
+        return String(n.id || '').toLowerCase() === key ||
+               String(n.uuid || '').toLowerCase() === key ||
+               String(n.name || '').toLowerCase() === key;
+      }) : null;
+
+      const memory = formatResource(docker.memoryUsedMb ?? docker.memoryMbUsed, docker.memoryMb);
+      const disk = formatResource(docker.storageUsedMb ?? docker.storageMbUsed, docker.storageMb);
+      const cpuPercent = clampPercent(docker.cpuPercent ?? docker.cpus);
+
+      const live = liveStatusMap[name.toLowerCase()];
+      const status = live || resolveBotStatus(entry);
+
+      return {
+        name,
+        templateId: entry.template || null,
+        templateName: template?.name || entry.template || 'Custom template',
+        templateImage: template?.templateImage || template?.['template-image'] || null,
+        description: template?.description || 'Manage configuration, logs and deployments.',
+        nodeName: node?.name || (entry.nodeId ? entry.nodeId : 'Local node'),
+        ip: entry.ip || 'localhost',
+        port: entry.port || null,
+        cpu: cpuPercent !== null ? `${cpuPercent.toFixed(1)}%` : null,
+        cpuPercent,
+        memory,
+        disk,
+        status
+      };
+    });
+
+    return res.render("index", {
+      bots: botCards,
+      isAdmin: safeUser ? safeUser.admin : false,
+      user: safeUser,
+      serverStartTime: SERVER_START
+    });
+  } catch (err) {
+    console.error("Eroare in GET /", err);
+    return res.status(500).send("Eroare internă");
   }
-  res.render("index", { bots: botsToShow, isAdmin: safeUser ? safeUser.admin : false, user: safeUser, serverStartTime: SERVER_START });
 });
 
 app.get("/settings", (req, res) => {
@@ -4040,6 +4341,22 @@ io.on("connection", (socket) => {
         socket.emit("output", buffers[name].join("\n") + "\n");
       }
     } catch {}
+  });
+
+  socket.on('dashboard:watch', (payload = {}) => {
+    const bots = Array.isArray(payload.bots) ? payload.bots : [];
+    const email = socket.request?.session?.user || null;
+    const allowed = bots
+      .map(b => String(b || '').toLowerCase())
+      .filter(Boolean)
+      .filter(name => userCanSeeBot(email, name));
+
+    if (allowed.length === 0) return;
+    startDashboardWatcher(socket, allowed);
+  });
+
+  socket.on('disconnect', () => {
+    stopDashboardWatcher(socket);
   });
   // helpers vizibile DOAR pentru conexiunea curentă
   function deny(botName, msg = "Permission denied") {

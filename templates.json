@@ -51,5 +51,21 @@
       "command": "sleep 3600",
       "restart": "no"
     }
+  },
+  {
+    "id": "minecraft2",
+    "name": "Minecraft2",
+    "description": "",
+    "templateImage": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRZJQZKV0kKMkf4cvZylqeLsL0yc8eLh8eYDA&s",
+    "docker": {
+      "image": "itzg/minecraft-server",
+      "tag": "latest",
+      "ports": [],
+      "volumes": [
+        "{BOT_DIR}:/data"
+      ],
+      "command": "",
+      "restart": "unless-stopped"
+    }
   }
 ]

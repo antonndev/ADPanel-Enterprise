@@ -27,5 +27,12 @@
     "start": "server.jar",
     "ip": "103.208.85.88",
     "port": 25568
+  },
+  {
+    "name": "minecraftvpse",
+    "template": "minecraft2",
+    "start": null,
+    "ip": "103.208.85.88",
+    "port": 25565
   }
 ]

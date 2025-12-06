@@ -1,54 +1,44 @@
-[20:03:48] [ServerMain/INFO]: [bootstrap] Running Java 21 (OpenJDK 64-Bit Server VM 21.0.9+10-LTS; Eclipse Adoptium Temurin-21.0.9+10) on Linux 6.8.0-88-generic (amd64)
-[20:03:48] [ServerMain/INFO]: [bootstrap] Loading Paper 1.21.8-60-main@29c8822 (2025-09-06T21:49:13Z) for Minecraft 1.21.8
-[20:03:48] [ServerMain/INFO]: [PluginInitializerManager] Initializing plugins...
-[20:03:48] [ServerMain/INFO]: [PluginInitializerManager] Initialized 0 plugins
-[20:03:52] [ServerMain/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]
-[20:03:52] [ServerMain/INFO]: Found new data pack file/bukkit, loading it automatically
-[20:03:52] [ServerMain/INFO]: Found new data pack paper, loading it automatically
-[20:03:53] [ServerMain/INFO]: No existing world data, creating new world
-[20:03:53] [ServerMain/INFO]: Loaded 1407 recipes
-[20:03:53] [ServerMain/INFO]: Loaded 1520 advancements
-[20:03:53] [ServerMain/INFO]: [ca.spottedleaf.dataconverter.minecraft.datatypes.MCTypeRegistry] Initialising converters for DataConverter...
-[20:03:54] [ServerMain/INFO]: [ca.spottedleaf.dataconverter.minecraft.datatypes.MCTypeRegistry] Finished initialising converters for DataConverter in 291.1ms
-[20:03:54] [Server thread/INFO]: Starting minecraft server version 1.21.8
-[20:03:54] [Server thread/WARN]: ****************************
-[20:03:54] [Server thread/WARN]: YOU ARE RUNNING THIS SERVER AS AN ADMINISTRATIVE OR ROOT USER. THIS IS NOT ADVISED.
-[20:03:54] [Server thread/WARN]: YOU ARE OPENING YOURSELF UP TO POTENTIAL RISKS WHEN DOING THIS.
-[20:03:54] [Server thread/WARN]: FOR MORE INFORMATION, SEE https://madelinemiller.dev/blog/root-minecraft-server/
-[20:03:54] [Server thread/WARN]: ****************************
-[20:03:54] [Server thread/INFO]: Loading properties
-[20:03:54] [Server thread/INFO]: This server is running Paper version 1.21.8-60-main@29c8822 (2025-09-06T21:49:13Z) (Implementing API version 1.21.8-R0.1-SNAPSHOT)
-[20:03:54] [Server thread/INFO]: [spark] This server bundles the spark profiler. For more information please visit https://docs.papermc.io/paper/profiling
-[20:03:54] [Server thread/INFO]: Server Ping Player Sample Count: 12
-[20:03:54] [Server thread/INFO]: Using 4 threads for Netty based IO
-[20:03:54] [Server thread/INFO]: [MoonriseCommon] Paper is using 1 worker threads, 1 I/O threads
-[20:03:54] [Server thread/INFO]: [ChunkTaskScheduler] Chunk system is using population gen parallelism: true
-[20:03:55] [Server thread/INFO]: Default game type: SURVIVAL
-[20:03:55] [Server thread/INFO]: Generating keypair
-[20:03:55] [Server thread/INFO]: Starting Minecraft server on *:25568
-[20:03:55] [Server thread/INFO]: Using epoll channel type
-[20:03:55] [Server thread/INFO]: Paper: Using libdeflate (Linux x86_64) compression from Velocity.
-[20:03:55] [Server thread/INFO]: Paper: Using OpenSSL 3.x.x (Linux x86_64) cipher from Velocity.
-[20:03:55] [Server thread/INFO]: Server permissions file permissions.yml is empty, ignoring it
-[20:03:55] [Server thread/INFO]: Preparing level "world"
-[20:04:02] [Server thread/INFO]: Preparing start region for dimension minecraft:overworld
-[20:04:02] [Server thread/INFO]: Preparing spawn area: 2%
-[20:04:02] [Server thread/INFO]: Preparing spawn area: 2%
-[20:04:03] [Server thread/INFO]: Preparing spawn area: 10%
-[20:04:03] [Server thread/INFO]: Preparing spawn area: 18%
-[20:04:04] [Server thread/INFO]: Preparing spawn area: 18%
-[20:04:04] [Server thread/INFO]: Preparing spawn area: 51%
-[20:04:05] [Server thread/INFO]: Preparing spawn area: 67%
-[20:04:05] [Server thread/INFO]: Time elapsed: 3356 ms
-[20:04:05] [Server thread/INFO]: Preparing start region for dimension minecraft:the_nether
-[20:04:05] [Server thread/INFO]: Preparing spawn area: 2%
-[20:04:06] [Server thread/INFO]: Preparing spawn area: 6%
-[20:04:06] [Server thread/INFO]: Preparing spawn area: 59%
-[20:04:06] [Server thread/INFO]: Time elapsed: 1214 ms
-[20:04:06] [Server thread/INFO]: Preparing start region for dimension minecraft:the_end
-[20:04:06] [Server thread/INFO]: Preparing spawn area: 2%
-[20:04:07] [Server thread/INFO]: Time elapsed: 304 ms
-[20:04:07] [Server thread/INFO]: [spark] Starting background profiler...
-[20:04:07] [Server thread/INFO]: Done preparing level "world" (12.109s)
-[20:04:07] [Server thread/INFO]: Running delayed init tasks
-[20:04:07] [Server thread/INFO]: Done (19.425s)! For help, type "help"
+[07:35:32] [ServerMain/INFO]: [bootstrap] Running Java 21 (OpenJDK 64-Bit Server VM 21.0.9+10-LTS; Eclipse Adoptium Temurin-21.0.9+10) on Linux 6.8.0-88-generic (amd64)
+[07:35:32] [ServerMain/INFO]: [bootstrap] Loading Paper 1.21.8-60-main@29c8822 (2025-09-06T21:49:13Z) for Minecraft 1.21.8
+[07:35:32] [ServerMain/INFO]: [PluginInitializerManager] Initializing plugins...
+[07:35:33] [ServerMain/INFO]: [PluginInitializerManager] Initialized 0 plugins
+[07:35:36] [ServerMain/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]
+[07:35:37] [ServerMain/INFO]: Loaded 1407 recipes
+[07:35:37] [ServerMain/INFO]: Loaded 1520 advancements
+[07:35:37] [ServerMain/INFO]: [ca.spottedleaf.dataconverter.minecraft.datatypes.MCTypeRegistry] Initialising converters for DataConverter...
+[07:35:38] [ServerMain/INFO]: [ca.spottedleaf.dataconverter.minecraft.datatypes.MCTypeRegistry] Finished initialising converters for DataConverter in 317.0ms
+[07:35:38] [Server thread/INFO]: Starting minecraft server version 1.21.8
+[07:35:38] [Server thread/WARN]: ****************************
+[07:35:38] [Server thread/WARN]: YOU ARE RUNNING THIS SERVER AS AN ADMINISTRATIVE OR ROOT USER. THIS IS NOT ADVISED.
+[07:35:38] [Server thread/WARN]: YOU ARE OPENING YOURSELF UP TO POTENTIAL RISKS WHEN DOING THIS.
+[07:35:38] [Server thread/WARN]: FOR MORE INFORMATION, SEE https://madelinemiller.dev/blog/root-minecraft-server/
+[07:35:38] [Server thread/WARN]: ****************************
+[07:35:38] [Server thread/INFO]: Loading properties
+[07:35:38] [Server thread/INFO]: This server is running Paper version 1.21.8-60-main@29c8822 (2025-09-06T21:49:13Z) (Implementing API version 1.21.8-R0.1-SNAPSHOT)
+[07:35:38] [Server thread/INFO]: [spark] This server bundles the spark profiler. For more information please visit https://docs.papermc.io/paper/profiling
+[07:35:38] [Server thread/INFO]: Server Ping Player Sample Count: 12
+[07:35:38] [Server thread/INFO]: Using 4 threads for Netty based IO
+[07:35:39] [Server thread/INFO]: [MoonriseCommon] Paper is using 1 worker threads, 1 I/O threads
+[07:35:39] [Server thread/INFO]: [ChunkTaskScheduler] Chunk system is using population gen parallelism: true
+[07:35:39] [Server thread/INFO]: Default game type: SURVIVAL
+[07:35:39] [Server thread/INFO]: Generating keypair
+[07:35:39] [Server thread/INFO]: Starting Minecraft server on *:25568
+[07:35:39] [Server thread/INFO]: Using epoll channel type
+[07:35:39] [Server thread/INFO]: Paper: Using libdeflate (Linux x86_64) compression from Velocity.
+[07:35:39] [Server thread/INFO]: Paper: Using OpenSSL 3.x.x (Linux x86_64) cipher from Velocity.
+[07:35:39] [Server thread/INFO]: Server permissions file permissions.yml is empty, ignoring it
+[07:35:39] [Server thread/INFO]: Preparing level "world"
+[07:35:39] [Server thread/INFO]: Preparing start region for dimension minecraft:overworld
+[07:35:39] [Server thread/INFO]: Preparing spawn area: 0%
+[07:35:40] [Server thread/INFO]: Preparing spawn area: 0%
+[07:35:40] [Server thread/INFO]: Time elapsed: 624 ms
+[07:35:40] [Server thread/INFO]: Preparing start region for dimension minecraft:the_nether
+[07:35:40] [Server thread/INFO]: Preparing spawn area: 0%
+[07:35:40] [Server thread/INFO]: Time elapsed: 165 ms
+[07:35:40] [Server thread/INFO]: Preparing start region for dimension minecraft:the_end
+[07:35:40] [Server thread/INFO]: Preparing spawn area: 0%
+[07:35:40] [Server thread/INFO]: Time elapsed: 75 ms
+[07:35:40] [Server thread/INFO]: [spark] Starting background profiler...
+[07:35:40] [Server thread/INFO]: Done preparing level "world" (1.422s)
+[07:35:40] [Server thread/INFO]: Running delayed init tasks
+[07:35:40] [Server thread/INFO]: Done (8.903s)! For help, type "help"

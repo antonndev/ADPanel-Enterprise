@@ -1,0 +1,42 @@
+[07:50:14] [ServerMain/INFO]: [bootstrap] Running Java 21 (OpenJDK 64-Bit Server VM 21.0.9+10-LTS; Eclipse Adoptium Temurin-21.0.9+10) on Linux 6.8.0-88-generic (amd64)
+[07:50:14] [ServerMain/INFO]: [bootstrap] Loading Paper 1.21.4-232-ver/1.21.4@12d8fe0 (2025-06-09T10:15:42Z) for Minecraft 1.21.4
+[07:50:14] [ServerMain/INFO]: [PluginInitializerManager] Initializing plugins...
+[07:50:14] [ServerMain/INFO]: [PluginInitializerManager] Initialized 0 plugins
+[07:50:17] [ServerMain/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]
+[07:50:18] [ServerMain/INFO]: Loaded 1370 recipes
+[07:50:18] [ServerMain/INFO]: Loaded 1481 advancements
+[07:50:18] [ServerMain/INFO]: [MCTypeRegistry] Initialising converters for DataConverter...
+[07:50:18] [ServerMain/INFO]: [MCTypeRegistry] Finished initialising converters for DataConverter in 128.0ms
+[07:50:18] [Server thread/INFO]: Starting minecraft server version 1.21.4
+[07:50:18] [Server thread/INFO]: Loading properties
+[07:50:18] [Server thread/INFO]: This server is running Paper version 1.21.4-232-ver/1.21.4@12d8fe0 (2025-06-09T10:15:42Z) (Implementing API version 1.21.4-R0.1-SNAPSHOT)
+[07:50:18] [Server thread/INFO]: [spark] This server bundles the spark profiler. For more information please visit https://docs.papermc.io/paper/profiling
+[07:50:18] [Server thread/INFO]: Server Ping Player Sample Count: 12
+[07:50:18] [Server thread/INFO]: Using 4 threads for Netty based IO
+[07:50:19] [Server thread/INFO]: [MoonriseCommon] Paper is using 1 worker threads, 1 I/O threads
+[07:50:19] [Server thread/INFO]: [ChunkTaskScheduler] Chunk system is using population gen parallelism: true
+[07:50:19] [Server thread/INFO]: Default game type: SURVIVAL
+[07:50:19] [Server thread/INFO]: Generating keypair
+[07:50:19] [Server thread/INFO]: Starting Minecraft server on *:25565
+[07:50:19] [Server thread/INFO]: Using epoll channel type
+[07:50:19] [Server thread/INFO]: Paper: Using libdeflate (Linux x86_64) compression from Velocity.
+[07:50:19] [Server thread/INFO]: Paper: Using OpenSSL 3.x.x (Linux x86_64) cipher from Velocity.
+[07:50:19] [Server thread/INFO]: Server permissions file permissions.yml is empty, ignoring it
+[07:50:19] [Server thread/INFO]: Preparing level "world"
+[07:50:19] [Server thread/INFO]: Preparing start region for dimension minecraft:overworld
+[07:50:20] [Server thread/INFO]: Preparing spawn area: 0%
+[07:50:20] [Server thread/INFO]: Preparing spawn area: 4%
+[07:50:20] [Server thread/INFO]: Time elapsed: 616 ms
+[07:50:20] [Server thread/INFO]: Preparing start region for dimension minecraft:the_nether
+[07:50:20] [Server thread/INFO]: Preparing spawn area: 0%
+[07:50:20] [Server thread/INFO]: Time elapsed: 134 ms
+[07:50:20] [Server thread/INFO]: Preparing start region for dimension minecraft:the_end
+[07:50:20] [Server thread/INFO]: Preparing spawn area: 0%
+[07:50:20] [Server thread/INFO]: Time elapsed: 62 ms
+[07:50:20] [Server thread/INFO]: [spark] Starting background profiler...
+[07:50:21] [Server thread/INFO]: Done preparing level "world" (1.404s)
+[07:50:21] [Server thread/INFO]: Starting remote control listener
+[07:50:21] [Server thread/INFO]: Thread RCON Listener started
+[07:50:21] [Server thread/INFO]: RCON running on 0.0.0.0:25575
+[07:50:21] [Server thread/INFO]: Running delayed init tasks
+[07:50:21] [Server thread/INFO]: Done (7.548s)! For help, type "help"
